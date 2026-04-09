@@ -8,10 +8,34 @@ export interface EdgeFilters {
   irmaos: boolean;
 }
 
-export interface FamilyTreeBuildParams {
+export interface GenerationColumnMeta {
+  level: number;
+  label: string;
+  x: number;
+}
+
+export interface MarriageNodeDetails {
+  id?: string;
+  marriageKey: string;
+  person1Id: string;
+  person2Id: string;
+  person1?: Pessoa;
+  person2?: Pessoa;
+  relationship?: Relacionamento;
+}
+
+export interface PersonNodeContextActions {
+  onView?: (pessoa: Pessoa) => void;
+  onEdit?: (pessoa: Pessoa) => void;
+  onAddConnection?: (pessoa: Pessoa) => void;
+  onRemove?: (pessoa: Pessoa) => void;
+}
+
+export interface FamilyTreeBuildParams extends PersonNodeContextActions {
   pessoas: Pessoa[];
   relacionamentos: Relacionamento[];
   onPersonClick?: (pessoa: Pessoa) => void;
+  onMarriageClick?: (details: MarriageNodeDetails) => void;
   selectedPersonId?: string;
   edgeFilters?: EdgeFilters;
 }
@@ -33,6 +57,9 @@ export interface TreeGraphBuildResult extends TreeLayoutParams {
 export interface TreeLayoutResult {
   nodes: Node[];
   edges: Edge[];
+  metadata?: {
+    generationColumns?: GenerationColumnMeta[];
+  };
 }
 
 export interface LayoutConstants {
@@ -65,6 +92,18 @@ export interface FamilyBlock {
   anchorKey: string;
   anchorY: number;
   sortValue: number;
+}
+
+export interface PersonNodeData extends PersonNodeContextActions {
+  pessoa: Pessoa;
+  onClick?: (pessoa: Pessoa) => void;
+  isSelected?: boolean;
+}
+
+export interface MarriageNodeData {
+  emoji?: string;
+  details?: MarriageNodeDetails;
+  onClickMarriage?: (details: MarriageNodeDetails) => void;
 }
 
 export const DEFAULT_EDGE_FILTERS: EdgeFilters = {

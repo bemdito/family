@@ -1,20 +1,11 @@
 import { Node } from 'reactflow';
-import { TREE_CONSTANTS, TreeLayoutParams, TreeLayoutResult, getSortableBirthValue } from '../types';
-
-function buildParentToChildrenMap(childParentsMap: Map<string, Set<string>>) {
-  const parentToChildrenMap = new Map<string, string[]>();
-
-  childParentsMap.forEach((parentIds, childId) => {
-    parentIds.forEach((parentId) => {
-      if (!parentToChildrenMap.has(parentId)) {
-        parentToChildrenMap.set(parentId, []);
-      }
-      parentToChildrenMap.get(parentId)!.push(childId);
-    });
-  });
-
-  return parentToChildrenMap;
-}
+import {
+  TREE_CONSTANTS,
+  TreeLayoutParams,
+  TreeLayoutResult,
+  getSortableBirthValue,
+  GenerationColumnMeta,
+} from '../types';
 
 function computeBaseGenerations(
   childParentsMap: Map<string, Set<string>>,
@@ -26,7 +17,6 @@ function computeBaseGenerations(
   const visit = (personId: string): number => {
     if (memo.has(personId)) return memo.get(personId)!;
     if (visiting.has(personId)) {
-      // Evita travamento em caso de ciclo inconsistente nos dados.
       return 0;
     }
 
@@ -54,8 +44,6 @@ function computeGenerations(
   marriageMap: Map<string, string>
 ) {
   const generations = computeBaseGenerations(childParentsMap, personIds);
-
-  // Relaxação limitada para alinhar cônjuges e filhos sem risco de loop infinito.
   const maxIterations = Math.max(1, personIds.length * 4);
 
   for (let iteration = 0; iteration < maxIterations; iteration += 1) {
@@ -104,6 +92,14 @@ function computeGenerations(
   return generations;
 }
 
+function normalizeName(value?: string) {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
 export function generationColumnsLayout({
   personNodes,
   marriageNodes,
@@ -124,6 +120,7 @@ export function generationColumnsLayout({
   const SPOUSE_VERTICAL_GAP = 72;
   const BLOCK_VERTICAL_GAP = 80;
   const SINGLE_PARENT_CHILD_GAP = 140;
+  const HEADER_OFFSET_Y = 72;
 
   const personMap = new Map(personNodes.map((node) => [node.id, node]));
   const marriageNodeMap = new Map(marriageNodes.map((node) => [node.id, node]));
@@ -146,17 +143,77 @@ export function generationColumnsLayout({
     return (pessoaA?.nome_completo || '').localeCompare(pessoaB?.nome_completo || '');
   };
 
-  const peopleByGeneration = new Map<number, string[]>();
-  generations.forEach((level, personId) => {
-    if (!peopleByGeneration.has(level)) {
-      peopleByGeneration.set(level, []);
+  // Geração visual desejada por pessoa.
+  // Atenção: aqui o valor é 0-based:
+  // Geração 1 = 0
+  // Geração 2 = 1
+  // Geração 3 = 2
+  // Geração 5 = 4
+  const generationOverrideByName = new Map<string, number>([
+    [normalizeName('Amalia Tsangaropoulos'), 0],
+    [normalizeName('Dimitri Tsangaropoulos'), 0],
+    [normalizeName('Athanase Tsangaropoulos'), 1],
+    [normalizeName('Charalambos Tsangaropoulos'), 2],
+    [normalizeName('Ivanira'), 2],
+    [normalizeName('Condilênia Maria Tsangaropulos Souza'), 4],
+  ]);
+
+  const getVisualGeneration = (personId: string) => {
+    const pessoa = pessoaById.get(personId);
+    const override = generationOverrideByName.get(normalizeName(pessoa?.nome_completo));
+
+    if (typeof override === 'number') {
+      return override;
     }
-    peopleByGeneration.get(level)!.push(personId);
+
+    return generations.get(personId) ?? 0;
+  };
+
+  const peopleByGeneration = new Map<number, string[]>();
+  personNodes.forEach((node) => {
+    const visualLevel = getVisualGeneration(node.id);
+
+    if (!peopleByGeneration.has(visualLevel)) {
+      peopleByGeneration.set(visualLevel, []);
+    }
+
+    peopleByGeneration.get(visualLevel)!.push(node.id);
   });
 
-  const sortedLevels = Array.from(peopleByGeneration.keys()).sort((a, b) => a - b);
+  const occupiedLevels = Array.from(peopleByGeneration.keys()).sort((a, b) => a - b);
+  const maxOccupiedLevel = occupiedLevels.length > 0 ? Math.max(...occupiedLevels) : 0;
+
+  const allLevels = Array.from({ length: maxOccupiedLevel + 1 }, (_, index) => index);
+
+  const generationColumns: GenerationColumnMeta[] = allLevels.map((level) => ({
+    level,
+    label: `Geração ${level + 1}`,
+    x: INITIAL_X + level * HORIZONTAL_GAP_BETWEEN_GENERATIONS,
+  }));
+
   const positionedNodes: Node[] = [];
   const positionedNodeIds = new Set<string>();
+
+  const headerNodes: Node[] = generationColumns.map((column) => ({
+    id: `generation-header-${column.level}`,
+    type: 'generationHeaderNode',
+    data: {
+      label: column.label,
+      generation: column.level,
+    },
+    position: {
+      x: column.x,
+      y: Math.max(0, INITIAL_Y - HEADER_OFFSET_Y),
+    },
+    draggable: false,
+    selectable: false,
+    connectable: false,
+  }));
+
+  headerNodes.forEach((node) => {
+    positionedNodes.push(node);
+    positionedNodeIds.add(node.id);
+  });
 
   const getParentIds = (personId: string) => Array.from(childParentsMap.get(personId) || []).sort();
 
@@ -183,7 +240,7 @@ export function generationColumnsLayout({
     return Math.min(...parentCenters);
   };
 
-  sortedLevels.forEach((level) => {
+  occupiedLevels.forEach((level) => {
     const currentX = INITIAL_X + level * HORIZONTAL_GAP_BETWEEN_GENERATIONS;
     const peopleInLevel = [...(peopleByGeneration.get(level) || [])].sort(comparePeople);
 
@@ -198,6 +255,12 @@ export function generationColumnsLayout({
 
     marriageMap.forEach((marriageNodeId, marriageKey) => {
       const [person1Id, person2Id] = marriageKey.split('::');
+
+      const person1Level = getVisualGeneration(person1Id);
+      const person2Level = getVisualGeneration(person2Id);
+
+      if (person1Level !== level || person2Level !== level) return;
+
       if (!peopleInLevel.includes(person1Id) || !peopleInLevel.includes(person2Id)) return;
 
       const ordered = [person1Id, person2Id].sort(comparePeople);
@@ -214,6 +277,7 @@ export function generationColumnsLayout({
 
     peopleInLevel.forEach((personId) => {
       if (processed.has(personId)) return;
+
       blocks.push({
         memberIds: [personId],
         anchorY: getAnchorY(personId),
@@ -340,5 +404,8 @@ export function generationColumnsLayout({
   return {
     nodes: positionedNodes,
     edges: validEdges,
+    metadata: {
+      generationColumns,
+    },
   };
 }

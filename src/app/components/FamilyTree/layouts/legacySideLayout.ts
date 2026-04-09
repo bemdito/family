@@ -402,5 +402,9 @@ export function legacySideLayout({
       };
     });
 
-  return { nodes: positionedNodes, edges: validEdges };
+  return {
+    nodes: positionedNodes,
+    edges: validEdges,
+    metadata: {},
+  };
 }

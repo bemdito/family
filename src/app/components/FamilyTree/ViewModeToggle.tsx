@@ -6,6 +6,7 @@ interface ViewModeToggleProps {
   value: TipoVisualizacaoArvore;
   onChange: (value: TipoVisualizacaoArvore) => void;
   className?: string;
+  availableModes?: TipoVisualizacaoArvore[];
 }
 
 const OPTIONS: Array<{
@@ -25,15 +26,41 @@ const OPTIONS: Array<{
   },
 ];
 
-export function ViewModeToggle({ value, onChange, className = '' }: ViewModeToggleProps) {
+export function ViewModeToggle({
+  value,
+  onChange,
+  className = '',
+  availableModes,
+}: ViewModeToggleProps) {
+  const visibleOptions = React.useMemo(() => {
+    if (!availableModes || availableModes.length === 0) {
+      return OPTIONS;
+    }
+
+    const allowed = new Set(availableModes);
+    return OPTIONS.filter((option) => allowed.has(option.value));
+  }, [availableModes]);
+
+  const fallbackValue = React.useMemo(() => {
+    if (visibleOptions.some((option) => option.value === value)) {
+      return value;
+    }
+
+    return visibleOptions[0]?.value;
+  }, [value, visibleOptions]);
+
+  if (!visibleOptions.length) {
+    return null;
+  }
+
   return (
     <div
       className={`inline-flex items-center rounded-lg border border-gray-200 bg-white p-1 shadow-sm ${className}`.trim()}
       role="tablist"
       aria-label="Selecionar visualização da árvore"
     >
-      {OPTIONS.map(({ value: optionValue, label, Icon }) => {
-        const isActive = value === optionValue;
+      {visibleOptions.map(({ value: optionValue, label, Icon }) => {
+        const isActive = fallbackValue === optionValue;
 
         return (
           <button

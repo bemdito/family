@@ -1,14 +1,32 @@
 import { Edge, MarkerType, Node } from 'reactflow';
-import { FamilyTreeBuildParams, TreeGraphBuildResult, DEFAULT_EDGE_FILTERS, TREE_CONSTANTS, getSortableBirthValue } from './types';
+import {
+  FamilyTreeBuildParams,
+  TreeGraphBuildResult,
+  DEFAULT_EDGE_FILTERS,
+  TREE_CONSTANTS,
+  getSortableBirthValue,
+  MarriageNodeDetails,
+} from './types';
 
 export function buildTreeGraph({
   pessoas,
   relacionamentos,
   onPersonClick,
+  onMarriageClick,
+  onView,
+  onEdit,
+  onAddConnection,
+  onRemove,
   selectedPersonId,
   edgeFilters,
 }: FamilyTreeBuildParams): TreeGraphBuildResult {
   const filters = edgeFilters || DEFAULT_EDGE_FILTERS;
+
+  const pessoaById = new Map(pessoas.map((pessoa) => [pessoa.id, pessoa]));
+  const conjugalRels = relacionamentos.filter((r) => r.tipo_relacionamento === 'conjuge');
+  const filiacaoRels = relacionamentos.filter(
+    (r) => r.tipo_relacionamento === 'pai' || r.tipo_relacionamento === 'mae'
+  );
 
   const personNodes: Node[] = pessoas.map((pessoa) => ({
     id: pessoa.id,
@@ -16,15 +34,14 @@ export function buildTreeGraph({
     data: {
       pessoa,
       onClick: onPersonClick,
+      onView,
+      onEdit,
+      onAddConnection,
+      onRemove,
       isSelected: pessoa.id === selectedPersonId,
     },
     position: { x: 0, y: 0 },
   }));
-
-  const conjugalRels = relacionamentos.filter((r) => r.tipo_relacionamento === 'conjuge');
-  const filiacaoRels = relacionamentos.filter(
-    (r) => r.tipo_relacionamento === 'pai' || r.tipo_relacionamento === 'mae'
-  );
 
   const childParentsMap = new Map<string, Set<string>>();
 
@@ -41,6 +58,27 @@ export function buildTreeGraph({
     childParentsMap.get(childId)!.add(parentId);
   });
 
+  const findConjugalRelationship = (parent1Id: string, parent2Id: string) =>
+    conjugalRels.find(
+      (rel) =>
+        (rel.pessoa_origem_id === parent1Id && rel.pessoa_destino_id === parent2Id) ||
+        (rel.pessoa_origem_id === parent2Id && rel.pessoa_destino_id === parent1Id)
+    );
+
+  const createMarriageDetails = (parent1Id: string, parent2Id: string): MarriageNodeDetails => {
+    const relationship = findConjugalRelationship(parent1Id, parent2Id);
+
+    return {
+      id: relationship?.id,
+      marriageKey: `${parent1Id}::${parent2Id}`,
+      person1Id: parent1Id,
+      person2Id: parent2Id,
+      person1: pessoaById.get(parent1Id),
+      person2: pessoaById.get(parent2Id),
+      relationship,
+    };
+  };
+
   const marriageNodes: Node[] = [];
   const marriageMap = new Map<string, string>();
   const childrenByMarriage = new Map<string, string[]>();
@@ -50,28 +88,29 @@ export function buildTreeGraph({
 
     const [parent1Id, parent2Id] = Array.from(parentIds).sort();
 
-    const parent1Exists = pessoas.some((p) => p.id === parent1Id);
-    const parent2Exists = pessoas.some((p) => p.id === parent2Id);
+    const parent1Exists = pessoaById.has(parent1Id);
+    const parent2Exists = pessoaById.has(parent2Id);
     if (!parent1Exists || !parent2Exists) return;
 
-    const hasConjugalRelationship = conjugalRels.some(
-      (rel) =>
-        (rel.pessoa_origem_id === parent1Id && rel.pessoa_destino_id === parent2Id) ||
-        (rel.pessoa_origem_id === parent2Id && rel.pessoa_destino_id === parent1Id)
-    );
-
+    const hasConjugalRelationship = !!findConjugalRelationship(parent1Id, parent2Id);
     if (!hasConjugalRelationship) return;
 
     const marriageKey = `${parent1Id}::${parent2Id}`;
 
     if (!marriageMap.has(marriageKey)) {
       const marriageNodeId = `marriage-${marriageKey}`;
+      const details = createMarriageDetails(parent1Id, parent2Id);
+
       marriageMap.set(marriageKey, marriageNodeId);
 
       marriageNodes.push({
         id: marriageNodeId,
         type: 'marriageNode',
-        data: { emoji: '💑' },
+        data: {
+          emoji: '💑',
+          details,
+          onClickMarriage: onMarriageClick,
+        },
         position: { x: 0, y: 0 },
       });
 
@@ -170,7 +209,7 @@ export function buildTreeGraph({
 
       const siblingsWithDates = childrenIds
         .map((childId) => {
-          const pessoa = pessoas.find((p) => p.id === childId);
+          const pessoa = pessoaById.get(childId);
           return {
             id: childId,
             sortableBirth: getSortableBirthValue(pessoa?.data_nascimento),
@@ -311,12 +350,18 @@ export function buildTreeGraph({
       if (!nodeIdsSet.has(person1Id) || !nodeIdsSet.has(person2Id)) return;
 
       const marriageNodeId = `marriage-${marriageKey}`;
+      const details = createMarriageDetails(parent1Id, parent2Id);
+
       marriageMap.set(marriageKey, marriageNodeId);
 
       marriageNodes.push({
         id: marriageNodeId,
         type: 'marriageNode',
-        data: { emoji: '💑' },
+        data: {
+          emoji: '💑',
+          details,
+          onClickMarriage: onMarriageClick,
+        },
         position: { x: 0, y: 0 },
       });
 
