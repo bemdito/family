@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, Link } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { obterPessoaPorId, obterRelacionamentosDaPessoa } from '../services/dataService';
 import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
 import { formatarTelefone } from '../utils/telefone';
+import { alternarFavorito, conteudoEstaFavoritado } from '../services/userEngagementService';
 import { Pessoa } from '../types';
 import { 
   ArrowLeft, 
@@ -16,8 +17,11 @@ import {
   Dog,
   Phone,
   Home,
-  Globe
+  Globe,
+  Star,
+  Bell
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function PersonProfile() {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +29,7 @@ export function PersonProfile() {
   const [pessoa, setPessoa] = useState<Pessoa | undefined>();
   const [relacionamentos, setRelacionamentos] = useState({ pais: [], maes: [], conjuges: [], filhos: [] });
   const [loading, setLoading] = useState(true);
+  const [favoritado, setFavoritado] = useState(false);
 
   // Recarregar dados quando o ID mudar ou quando retornar de edição
   useEffect(() => {
@@ -33,6 +38,7 @@ export function PersonProfile() {
         setLoading(true);
         const pessoaData = await obterPessoaPorId(id);
         setPessoa(pessoaData);
+        setFavoritado(conteudoEstaFavoritado('pessoa', id));
         
         if (pessoaData) {
           const rels = await obterRelacionamentosDaPessoa(id);
@@ -87,18 +93,48 @@ export function PersonProfile() {
   const conjugesUnicos = Array.from(new Set(conjuges.map(c => c.id))).map(id => conjuges.find(c => c.id === id)!);
   const filhosUnicos = Array.from(new Set(filhos.map(f => f.id))).map(id => filhos.find(f => f.id === id)!);
 
+  const handleToggleFavorite = () => {
+    const resultado = alternarFavorito({
+      tipo: 'pessoa',
+      conteudoId: pessoa.id,
+      titulo: pessoa.nome_completo,
+    });
+
+    setFavoritado(resultado.active);
+    toast.success(resultado.active ? 'Pessoa adicionada aos favoritos' : 'Pessoa removida dos favoritos');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 flex-wrap">
           <Button variant="ghost" onClick={() => navigate('/')}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Voltar para árvore
           </Button>
-          <Button variant="outline" onClick={() => navigate(`/admin/pessoas/${id}/editar`)}>
-            Editar
-          </Button>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link to="/meus-favoritos">
+              <Button variant="outline">
+                <Star className="w-4 h-4 mr-2" />
+                Favoritos
+              </Button>
+            </Link>
+            <Link to="/notificacoes">
+              <Button variant="outline">
+                <Bell className="w-4 h-4 mr-2" />
+                Notificações
+              </Button>
+            </Link>
+            <Button variant="outline" onClick={handleToggleFavorite}>
+              <Star className={`w-4 h-4 mr-2 ${favoritado ? 'fill-current text-yellow-500' : ''}`} />
+              {favoritado ? 'Salvo' : 'Salvar'}
+            </Button>
+            <Button variant="outline" onClick={() => navigate(`/admin/pessoas/${id}/editar`)}>
+              Editar
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -370,10 +406,16 @@ export function PersonProfile() {
         </div>
 
         {/* Actions */}
-        <div className="mt-6 flex gap-3 justify-center">
+        <div className="mt-6 flex gap-3 justify-center flex-wrap">
           <Button onClick={() => navigate('/')} variant="outline">
             Ver na Árvore Genealógica
           </Button>
+          <Link to="/calendario-familiar">
+            <Button variant="outline">
+              <Calendar className="w-4 h-4 mr-2" />
+              Abrir calendário familiar
+            </Button>
+          </Link>
         </div>
       </main>
     </div>
