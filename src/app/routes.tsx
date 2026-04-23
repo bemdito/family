@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 import { Home } from './pages/Home';
 import { PersonProfile } from './pages/PersonProfile';
+import { CalendarioFamiliar } from './pages/CalendarioFamiliar';
 import { AdminLogin } from './pages/admin/AdminLogin';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminPessoas } from './pages/admin/AdminPessoas';
@@ -19,6 +20,10 @@ export const router = createBrowserRouter([
   {
     path: '/pessoa/:id',
     element: <PersonProfile />,
+  },
+  {
+    path: '/calendario-familiar',
+    element: <CalendarioFamiliar />,
   },
   {
     path: '/admin',
