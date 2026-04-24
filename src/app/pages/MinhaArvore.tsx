@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { ArrowLeft, Bell, CalendarDays, LogOut, Star, UserCircle2, Users } from 'lucide-react';
+import { ArrowLeft, Bell, CalendarDays, Link2, LogOut, Star, UserCircle2, Users } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { obterTodasPessoas, obterTodosRelacionamentos } from '../services/dataService';
 import { buildMemberTreeSummary } from '../services/memberTreeService';
+import { ensureMemberProfile, getPrimaryLinkedPerson } from '../services/memberProfileService';
 import { Pessoa, Relacionamento } from '../types';
 import { toast } from 'sonner';
 
@@ -36,6 +37,8 @@ export function MinhaArvore() {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [relacionamentos, setRelacionamentos] = useState<Relacionamento[]>([]);
   const [loading, setLoading] = useState(true);
+  const [linkedPersonId, setLinkedPersonId] = useState<string | undefined>();
+  const [linkLoading, setLinkLoading] = useState(true);
 
   useEffect(() => {
     const carregar = async () => {
@@ -52,15 +55,32 @@ export function MinhaArvore() {
     carregar();
   }, []);
 
+  useEffect(() => {
+    const carregarVinculo = async () => {
+      if (!user) {
+        setLinkLoading(false);
+        return;
+      }
+
+      setLinkLoading(true);
+      await ensureMemberProfile(user.id, {
+        nome_exibicao: (user.user_metadata?.nome_exibicao as string | undefined) ?? user.email ?? null,
+      });
+      const { data, error } = await getPrimaryLinkedPerson(user.id);
+      if (error) {
+        toast.error(error);
+      }
+      setLinkedPersonId(data?.pessoa_id);
+      setLinkLoading(false);
+    };
+
+    carregarVinculo();
+  }, [user]);
+
   const pessoaBase = useMemo(() => {
-    if (pessoas.length === 0) return undefined;
-    const email = user?.email?.toLowerCase() ?? '';
-    return pessoas.find((pessoa) => {
-      const rede = String(pessoa.rede_social ?? '').toLowerCase();
-      const telefone = String(pessoa.telefone ?? '').toLowerCase();
-      return email && (rede.includes(email) || telefone.includes(email));
-    }) ?? pessoas[0];
-  }, [pessoas, user]);
+    if (!linkedPersonId) return undefined;
+    return pessoas.find((pessoa) => pessoa.id === linkedPersonId);
+  }, [pessoas, linkedPersonId]);
 
   const resumo = useMemo(() => buildMemberTreeSummary(pessoaBase?.id, pessoas, relacionamentos), [pessoaBase, pessoas, relacionamentos]);
 
@@ -68,6 +88,8 @@ export function MinhaArvore() {
     await signOut();
     toast.success('Sessão encerrada.');
   };
+
+  const semVinculo = !linkLoading && !pessoaBase;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -116,6 +138,23 @@ export function MinhaArvore() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+        {semVinculo && (
+          <section className="bg-amber-50 border border-amber-200 rounded-2xl shadow-sm p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-amber-950">Sua conta ainda não está vinculada a uma pessoa da árvore</h2>
+              <p className="text-sm text-amber-900 mt-2">
+                Para ativar a visualização personalizada da sua família direta, associe esta conta ao seu perfil dentro da árvore genealógica.
+              </p>
+            </div>
+            <Link to="/vincular-perfil">
+              <button className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-600 text-white text-sm font-medium hover:bg-amber-700">
+                <Link2 className="w-4 h-4" />
+                Vincular meu perfil
+              </button>
+            </Link>
+          </section>
+        )}
+
         <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,1fr)] gap-6">
           <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <div className="flex items-start gap-4">
@@ -126,7 +165,7 @@ export function MinhaArvore() {
                 <p className="text-sm text-gray-500">Conta autenticada</p>
                 <h2 className="text-2xl font-bold text-gray-900">{user?.user_metadata?.nome_exibicao || user?.email || 'Membro da família'}</h2>
                 <p className="text-sm text-gray-600 mt-2">
-                  Esta área será a base para a futura visualização personalizada da árvore, com foco no usuário logado.
+                  Esta área mostra um resumo da sua família próxima com base no vínculo real da sua conta.
                 </p>
               </div>
             </div>
@@ -153,24 +192,37 @@ export function MinhaArvore() {
 
           <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4">Pessoa base da sessão</h3>
-            {loading ? (
+            {loading || linkLoading ? (
               <p className="text-sm text-gray-500">Carregando dados...</p>
             ) : resumo.pessoaBase ? (
               <div className="space-y-3">
                 <p className="text-xl font-bold text-gray-900">{resumo.pessoaBase.nome_completo}</p>
                 {resumo.pessoaBase.local_nascimento && <p className="text-sm text-gray-500">{resumo.pessoaBase.local_nascimento}</p>}
-                <Link
-                  to={`/pessoa/${resumo.pessoaBase.id}`}
-                  className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline"
-                >
-                  Abrir perfil dessa pessoa
-                </Link>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    to={`/pessoa/${resumo.pessoaBase.id}`}
+                    className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline"
+                  >
+                    Abrir perfil dessa pessoa
+                  </Link>
+                  <Link
+                    to="/vincular-perfil"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-amber-700 hover:underline"
+                  >
+                    Alterar vínculo
+                  </Link>
+                </div>
                 <p className="text-xs text-gray-400 pt-2 border-t border-gray-100">
-                  Observação: nesta fase inicial, a associação ainda usa uma heurística temporária. O próximo passo é ligar o usuário autenticado ao vínculo real na tabela `user_person_links`.
+                  Nas próximas etapas, esta área passará a oferecer filtros por família direta, ramo materno, ramo paterno e navegação centrada em você.
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Nenhuma pessoa base encontrada ainda.</p>
+              <div className="space-y-3">
+                <p className="text-sm text-gray-500">Nenhuma pessoa vinculada à sua conta ainda.</p>
+                <Link to="/vincular-perfil" className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline">
+                  Vincular perfil agora
+                </Link>
+              </div>
             )}
           </div>
         </section>
@@ -188,8 +240,8 @@ export function MinhaArvore() {
             <h3 className="text-lg font-bold text-gray-900">Próximos passos desta área</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 text-sm text-gray-700">
-            <div className="rounded-xl border border-gray-200 p-4">Vincular o usuário autenticado a uma pessoa real na tabela <code>user_person_links</code>.</div>
             <div className="rounded-xl border border-gray-200 p-4">Filtrar a árvore por família direta, ramo materno e ramo paterno.</div>
+            <div className="rounded-xl border border-gray-200 p-4">Centralizar a visualização da árvore na pessoa vinculada à conta.</div>
             <div className="rounded-xl border border-gray-200 p-4">Transformar esta área em ponto de entrada para favoritos, notificações, eventos e calendário pessoal.</div>
           </div>
         </section>
