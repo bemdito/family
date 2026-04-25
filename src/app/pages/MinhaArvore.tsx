@@ -1,12 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { ArrowLeft, Bell, CalendarDays, Link2, LogOut, Star, UserCircle2, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bell,
+  CalendarDays,
+  Filter,
+  Link2,
+  LogOut,
+  Star,
+  UserCircle2,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { obterTodasPessoas, obterTodosRelacionamentos } from '../services/dataService';
-import { buildMemberTreeSummary } from '../services/memberTreeService';
+import {
+  buildMemberTreeSummary,
+  countPeopleInScope,
+  filterPeopleByMemberScope,
+} from '../services/memberTreeService';
 import { ensureMemberProfile, getPrimaryLinkedPerson } from '../services/memberProfileService';
 import { Pessoa, Relacionamento } from '../types';
 import { toast } from 'sonner';
+
+type MemberScope = 'toda_arvore' | 'familia_direta' | 'ramo_materno' | 'ramo_paterno';
 
 function PeopleList({ title, items }: { title: string; items: Pessoa[] }) {
   return (
@@ -23,7 +39,9 @@ function PeopleList({ title, items }: { title: string; items: Pessoa[] }) {
               className="block rounded-xl border border-gray-200 px-4 py-3 hover:bg-gray-50"
             >
               <p className="font-semibold text-gray-900 text-sm">{item.nome_completo}</p>
-              {item.local_nascimento && <p className="text-xs text-gray-500 mt-1">{item.local_nascimento}</p>}
+              {item.local_nascimento && (
+                <p className="text-xs text-gray-500 mt-1">{item.local_nascimento}</p>
+              )}
             </Link>
           ))}
         </div>
@@ -39,6 +57,7 @@ export function MinhaArvore() {
   const [loading, setLoading] = useState(true);
   const [linkedPersonId, setLinkedPersonId] = useState<string | undefined>();
   const [linkLoading, setLinkLoading] = useState(true);
+  const [scope, setScope] = useState<MemberScope>('familia_direta');
 
   useEffect(() => {
     const carregar = async () => {
@@ -82,7 +101,20 @@ export function MinhaArvore() {
     return pessoas.find((pessoa) => pessoa.id === linkedPersonId);
   }, [pessoas, linkedPersonId]);
 
-  const resumo = useMemo(() => buildMemberTreeSummary(pessoaBase?.id, pessoas, relacionamentos), [pessoaBase, pessoas, relacionamentos]);
+  const resumo = useMemo(
+    () => buildMemberTreeSummary(pessoaBase?.id, pessoas, relacionamentos),
+    [pessoaBase, pessoas, relacionamentos]
+  );
+
+  const pessoasNoEscopo = useMemo(
+    () => filterPeopleByMemberScope(pessoas, scope, resumo),
+    [pessoas, scope, resumo]
+  );
+
+  const totalEscopo = useMemo(
+    () => countPeopleInScope(scope, resumo, pessoas.length),
+    [scope, resumo, pessoas.length]
+  );
 
   const handleLogout = async () => {
     await signOut();
@@ -141,7 +173,9 @@ export function MinhaArvore() {
         {semVinculo && (
           <section className="bg-amber-50 border border-amber-200 rounded-2xl shadow-sm p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-amber-950">Sua conta ainda não está vinculada a uma pessoa da árvore</h2>
+              <h2 className="text-lg font-bold text-amber-950">
+                Sua conta ainda não está vinculada a uma pessoa da árvore
+              </h2>
               <p className="text-sm text-amber-900 mt-2">
                 Para ativar a visualização personalizada da sua família direta, associe esta conta ao seu perfil dentro da árvore genealógica.
               </p>
@@ -163,7 +197,9 @@ export function MinhaArvore() {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Conta autenticada</p>
-                <h2 className="text-2xl font-bold text-gray-900">{user?.user_metadata?.nome_exibicao || user?.email || 'Membro da família'}</h2>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {user?.user_metadata?.nome_exibicao || user?.email || 'Membro da família'}
+                </h2>
                 <p className="text-sm text-gray-600 mt-2">
                   Esta área mostra um resumo da sua família próxima com base no vínculo real da sua conta.
                 </p>
@@ -172,8 +208,8 @@ export function MinhaArvore() {
 
             <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               <div className="rounded-2xl bg-blue-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-blue-700 font-semibold">Pessoas</p>
-                <p className="text-2xl font-bold text-blue-900 mt-2">{pessoas.length}</p>
+                <p className="text-xs uppercase tracking-wide text-blue-700 font-semibold">Escopo atual</p>
+                <p className="text-2xl font-bold text-blue-900 mt-2">{totalEscopo}</p>
               </div>
               <div className="rounded-2xl bg-green-50 p-4">
                 <p className="text-xs uppercase tracking-wide text-green-700 font-semibold">Pais</p>
@@ -197,7 +233,9 @@ export function MinhaArvore() {
             ) : resumo.pessoaBase ? (
               <div className="space-y-3">
                 <p className="text-xl font-bold text-gray-900">{resumo.pessoaBase.nome_completo}</p>
-                {resumo.pessoaBase.local_nascimento && <p className="text-sm text-gray-500">{resumo.pessoaBase.local_nascimento}</p>}
+                {resumo.pessoaBase.local_nascimento && (
+                  <p className="text-sm text-gray-500">{resumo.pessoaBase.local_nascimento}</p>
+                )}
                 <div className="flex flex-wrap gap-3">
                   <Link
                     to={`/pessoa/${resumo.pessoaBase.id}`}
@@ -212,19 +250,52 @@ export function MinhaArvore() {
                     Alterar vínculo
                   </Link>
                 </div>
-                <p className="text-xs text-gray-400 pt-2 border-t border-gray-100">
-                  Nas próximas etapas, esta área passará a oferecer filtros por família direta, ramo materno, ramo paterno e navegação centrada em você.
-                </p>
               </div>
             ) : (
               <div className="space-y-3">
                 <p className="text-sm text-gray-500">Nenhuma pessoa vinculada à sua conta ainda.</p>
-                <Link to="/vincular-perfil" className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline">
+                <Link
+                  to="/vincular-perfil"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline"
+                >
                   Vincular perfil agora
                 </Link>
               </div>
             )}
           </div>
+        </section>
+
+        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <Filter className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-bold text-gray-900">Escopo da visualização</h3>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            {[
+              ['familia_direta', 'Família direta'],
+              ['ramo_materno', 'Ramo materno'],
+              ['ramo_paterno', 'Ramo paterno'],
+              ['toda_arvore', 'Toda a árvore'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setScope(value as MemberScope)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                  scope === value
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <p className="text-sm text-gray-500 mt-4">
+            Este filtro já organiza a área do membro. O próximo passo será levar o mesmo escopo para a visualização gráfica da árvore.
+          </p>
         </section>
 
         <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -237,13 +308,27 @@ export function MinhaArvore() {
         <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
           <div className="flex items-center gap-3 mb-4">
             <Users className="w-5 h-5 text-blue-600" />
-            <h3 className="text-lg font-bold text-gray-900">Próximos passos desta área</h3>
+            <h3 className="text-lg font-bold text-gray-900">Pessoas no escopo selecionado</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 text-sm text-gray-700">
-            <div className="rounded-xl border border-gray-200 p-4">Filtrar a árvore por família direta, ramo materno e ramo paterno.</div>
-            <div className="rounded-xl border border-gray-200 p-4">Centralizar a visualização da árvore na pessoa vinculada à conta.</div>
-            <div className="rounded-xl border border-gray-200 p-4">Transformar esta área em ponto de entrada para favoritos, notificações, eventos e calendário pessoal.</div>
-          </div>
+
+          {pessoasNoEscopo.length === 0 ? (
+            <p className="text-sm text-gray-500">Nenhuma pessoa encontrada neste escopo.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {pessoasNoEscopo.map((pessoa) => (
+                <Link
+                  key={pessoa.id}
+                  to={`/pessoa/${pessoa.id}`}
+                  className="block rounded-xl border border-gray-200 px-4 py-4 hover:bg-gray-50"
+                >
+                  <p className="font-semibold text-gray-900 text-sm">{pessoa.nome_completo}</p>
+                  {pessoa.local_nascimento && (
+                    <p className="text-xs text-gray-500 mt-1">{pessoa.local_nascimento}</p>
+                  )}
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
       </main>
     </div>
