@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vite/
+.env
+.env.local
+.env.*.local
+supabase/.temp/
+.supabase/
+.DS_Store
