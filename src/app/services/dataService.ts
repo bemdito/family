@@ -1,74 +1,71 @@
 import { Pessoa, Relacionamento, ArquivoHistorico } from '../types';
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { supabase } from '../lib/supabaseClient';
 
-const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-055bf375`;
+type SupabaseErrorLike = {
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+  code?: string;
+};
 
-// Timeout para requisições
-const FETCH_TIMEOUT = 120000;
+const PESSOA_COLUMNS = [
+  'nome_completo',
+  'data_nascimento',
+  'local_nascimento',
+  'data_falecimento',
+  'local_falecimento',
+  'local_atual',
+  'foto_principal_url',
+  'humano_ou_pet',
+  'cor_bg_card',
+  'minibio',
+  'curiosidades',
+  'telefone',
+  'endereco',
+  'rede_social',
+  'instagram_usuario',
+  'instagram_url',
+  'permitir_exibir_instagram',
+  'permitir_mensagens_whatsapp',
+  'geracao_sociologica',
+] as const;
 
-const getHeaders = () => ({
-  'Content-Type': 'application/json',
-  'Authorization': `Bearer ${publicAnonKey}`,
-  'Connection': 'keep-alive',
-  'Accept': 'application/json',
-});
+const RELACIONAMENTO_COLUMNS = [
+  'pessoa_origem_id',
+  'pessoa_destino_id',
+  'tipo_relacionamento',
+  'subtipo_relacionamento',
+] as const;
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}, retries = 2) {
-  let lastError: Error | null = null;
+function logSupabaseError(context: string, error: SupabaseErrorLike) {
+  console.error(`[Supabase] ${context}: ${error.message || 'Erro desconhecido'}`, {
+    code: error.code,
+    details: error.details,
+    hint: error.hint,
+  });
+}
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+function toPessoa(row: any): Pessoa {
+  return {
+    ...row,
+    humano_ou_pet: row?.humano_ou_pet || 'Humano',
+  } as Pessoa;
+}
 
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
+function toRelacionamento(row: any): Relacionamento {
+  return {
+    ...row,
+    ativo: row?.ativo ?? true,
+  } as Relacionamento;
+}
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          // noop
-        }
-        throw new Error(errorMessage);
-      }
-
-      return response;
-    } catch (error) {
-      lastError = error as Error;
-
-      if (attempt === retries) {
-        console.error(`❌ Todas as tentativas falharam para ${url}:`, error);
-      }
-
-      if (
-        attempt < retries &&
-        error instanceof Error &&
-        (
-          error.name === 'AbortError' ||
-          error.message.includes('fetch') ||
-          error.message.includes('network') ||
-          error.message.includes('Failed to fetch') ||
-          error.message.includes('connection')
-        )
-      ) {
-        const waitTime = 500 * Math.pow(2, attempt);
-        console.log(`⏳ Aguardando ${waitTime}ms antes da tentativa ${attempt + 2}...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
-      }
-
-      throw error;
+function pickDefined<T extends readonly string[]>(source: Record<string, any>, keys: T) {
+  return keys.reduce<Record<string, any>>((payload, key) => {
+    if (source[key] !== undefined) {
+      payload[key] = source[key];
     }
-  }
-
-  throw lastError || new Error('Falha após múltiplas tentativas');
+    return payload;
+  }, {});
 }
 
 // =====================================================
@@ -76,108 +73,79 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, retries 
 // =====================================================
 
 export async function obterTodasPessoas(): Promise<Pessoa[]> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE}/pessoas`, {
-      headers: getHeaders(),
-    });
+  const { data, error } = await supabase
+    .from('pessoas')
+    .select('*')
+    .order('nome_completo', { ascending: true });
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao obter pessoas:', result.error);
-      return [];
-    }
-
-    return result.data || [];
-  } catch (error) {
-    console.error('Erro na requisição obterTodasPessoas:', error);
-    return [];
+  if (error) {
+    logSupabaseError('Erro ao obter pessoas da tabela pessoas', error);
+    throw new Error(`Erro ao carregar pessoas: ${error.message}`);
   }
+
+  return (data || []).map(toPessoa);
 }
 
 export async function obterPessoaPorId(id: string): Promise<Pessoa | undefined> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE}/pessoas/${id}`, {
-      headers: getHeaders(),
-    });
+  const { data, error } = await supabase
+    .from('pessoas')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao obter pessoa:', result.error);
-      return undefined;
-    }
-
-    return result.data;
-  } catch (error) {
-    console.error('Erro na requisição obterPessoaPorId:', error);
+  if (error) {
+    logSupabaseError(`Erro ao obter pessoa ${id}`, error);
     return undefined;
   }
+
+  return data ? toPessoa(data) : undefined;
 }
 
 export async function adicionarPessoa(pessoa: Omit<Pessoa, 'id'>): Promise<Pessoa | undefined> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE}/pessoas`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(pessoa),
-    });
+  const payload = pickDefined(pessoa, PESSOA_COLUMNS);
+  const { data, error } = await supabase
+    .from('pessoas')
+    .insert(payload)
+    .select('*')
+    .single();
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao adicionar pessoa:', result.error);
-      return undefined;
-    }
-
-    return result.data;
-  } catch (error) {
-    console.error('Erro na requisição adicionarPessoa:', error);
+  if (error) {
+    logSupabaseError('Erro ao adicionar pessoa na tabela pessoas', error);
     return undefined;
   }
+
+  return data ? toPessoa(data) : undefined;
 }
 
 export async function atualizarPessoa(id: string, pessoa: Partial<Pessoa>): Promise<Pessoa | undefined> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE}/pessoas/${id}`, {
-      method: 'PUT',
-      headers: getHeaders(),
-      body: JSON.stringify(pessoa),
-    });
+  const payload = pickDefined(pessoa, PESSOA_COLUMNS);
+  const { data, error } = await supabase
+    .from('pessoas')
+    .update(payload)
+    .eq('id', id)
+    .select('*')
+    .single();
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao atualizar pessoa:', result.error);
-      return undefined;
-    }
-
-    return result.data;
-  } catch (error) {
-    console.error('Erro na requisição atualizarPessoa:', error);
+  if (error) {
+    logSupabaseError(`Erro ao atualizar pessoa ${id}`, error);
     return undefined;
   }
+
+  return data ? toPessoa(data) : undefined;
 }
 
 export async function deletarPessoa(id: string): Promise<boolean> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE}/pessoas/${id}`, {
-      method: 'DELETE',
-      headers: getHeaders(),
-    });
+  const { error } = await supabase
+    .from('pessoas')
+    .delete()
+    .eq('id', id);
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao deletar pessoa:', result.error);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Erro na requisição deletarPessoa:', error);
+  if (error) {
+    logSupabaseError(`Erro ao deletar pessoa ${id}`, error);
     return false;
   }
+
+  return true;
 }
 
 export const excluirPessoa = deletarPessoa;
@@ -187,39 +155,31 @@ export const excluirPessoa = deletarPessoa;
 // =====================================================
 
 export async function obterTodosRelacionamentos(): Promise<Relacionamento[]> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE}/relacionamentos`, {
-      headers: getHeaders(),
-    });
+  const { data, error } = await supabase
+    .from('relacionamentos')
+    .select('*');
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao obter relacionamentos:', result.error);
-      return [];
-    }
-
-    return result.data || [];
-  } catch (error) {
-    console.error('Erro na requisição obterTodosRelacionamentos:', error);
-    return [];
+  if (error) {
+    logSupabaseError('Erro ao obter relacionamentos da tabela relacionamentos', error);
+    throw new Error(`Erro ao carregar relacionamentos: ${error.message}`);
   }
+
+  return (data || []).map(toRelacionamento);
 }
 
 export async function obterRelacionamentosDaPessoa(pessoaId: string) {
   try {
-    const response = await fetchWithTimeout(`${API_BASE}/pessoas/${pessoaId}/relacionamentos`, {
-      headers: getHeaders(),
-    });
+    const { data, error } = await supabase
+      .from('relacionamentos')
+      .select('*')
+      .or(`pessoa_origem_id.eq.${pessoaId},pessoa_destino_id.eq.${pessoaId}`);
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao obter relacionamentos da pessoa:', result.error);
-      return { pais: [], maes: [], conjuges: [], filhos: [], irmaos: [] };
+    if (error) {
+      logSupabaseError(`Erro ao obter relacionamentos da pessoa ${pessoaId}`, error);
+      throw new Error(error.message);
     }
 
-    const relacionamentos = result.data || [];
+    const relacionamentos = (data || []).map(toRelacionamento);
     const pessoas = await obterTodasPessoas();
     const pessoasMap = new Map(pessoas.map(p => [p.id, p]));
 
@@ -292,68 +252,50 @@ export async function obterRelacionamentosDaPessoa(pessoaId: string) {
 }
 
 export async function adicionarRelacionamento(relacionamento: Omit<Relacionamento, 'id'>): Promise<Relacionamento | undefined> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE}/relacionamentos`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(relacionamento),
-    });
+  const payload = pickDefined(relacionamento, RELACIONAMENTO_COLUMNS);
+  const { data, error } = await supabase
+    .from('relacionamentos')
+    .insert(payload)
+    .select('*')
+    .single();
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao adicionar relacionamento:', result.error);
-      return undefined;
-    }
-
-    return result.data;
-  } catch (error) {
-    console.error('Erro na requisição adicionarRelacionamento:', error);
+  if (error) {
+    logSupabaseError('Erro ao adicionar relacionamento na tabela relacionamentos', error);
     return undefined;
   }
+
+  return data ? toRelacionamento(data) : undefined;
 }
 
 export async function atualizarRelacionamento(id: string, relacionamento: Partial<Relacionamento>): Promise<Relacionamento | undefined> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE}/relacionamentos/${id}`, {
-      method: 'PUT',
-      headers: getHeaders(),
-      body: JSON.stringify(relacionamento),
-    });
+  const payload = pickDefined(relacionamento, RELACIONAMENTO_COLUMNS);
+  const { data, error } = await supabase
+    .from('relacionamentos')
+    .update(payload)
+    .eq('id', id)
+    .select('*')
+    .single();
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao atualizar relacionamento:', result.error);
-      return undefined;
-    }
-
-    return result.data;
-  } catch (error) {
-    console.error('Erro na requisição atualizarRelacionamento:', error);
+  if (error) {
+    logSupabaseError(`Erro ao atualizar relacionamento ${id}`, error);
     return undefined;
   }
+
+  return data ? toRelacionamento(data) : undefined;
 }
 
 export async function deletarRelacionamento(id: string): Promise<boolean> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE}/relacionamentos/${id}`, {
-      method: 'DELETE',
-      headers: getHeaders(),
-    });
+  const { error } = await supabase
+    .from('relacionamentos')
+    .delete()
+    .eq('id', id);
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro ao deletar relacionamento:', result.error);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Erro na requisição deletarRelacionamento:', error);
+  if (error) {
+    logSupabaseError(`Erro ao deletar relacionamento ${id}`, error);
     return false;
   }
+
+  return true;
 }
 
 export const excluirRelacionamento = deletarRelacionamento;
@@ -384,22 +326,40 @@ export async function buscarPessoas(termo: string): Promise<Pessoa[]> {
 
 export async function migrarDados(seed: any[]): Promise<{ success: boolean; message?: string; stats?: any }> {
   try {
-    const response = await fetchWithTimeout(`${API_BASE}/migrar-dados`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ seed }),
-    });
+    const { error: relacionamentosError } = await supabase
+      .from('relacionamentos')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('Erro na migração:', result.error);
-      return { success: false, message: result.error };
+    if (relacionamentosError) {
+      logSupabaseError('Erro ao limpar relacionamentos antes da migração', relacionamentosError);
+      return { success: false, message: relacionamentosError.message };
     }
 
-    return { success: true, message: result.message, stats: result.stats };
+    const { error: pessoasError } = await supabase
+      .from('pessoas')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+
+    if (pessoasError) {
+      logSupabaseError('Erro ao limpar pessoas antes da migração', pessoasError);
+      return { success: false, message: pessoasError.message };
+    }
+
+    const result = await importarDadosFamilia(seed);
+
+    return {
+      success: result.sucesso,
+      message: result.sucesso
+        ? 'Migração concluída com sucesso!'
+        : result.erros.join('\n') || 'Erro ao migrar dados',
+      stats: {
+        pessoas: result.pessoas.length,
+        relacionamentos: result.relacionamentos.length,
+      },
+    };
   } catch (error: any) {
-    console.error('Erro na requisição de migração:', error);
+    console.error('[Supabase] Erro na migração de dados:', error);
     return { success: false, message: error.message };
   }
 }

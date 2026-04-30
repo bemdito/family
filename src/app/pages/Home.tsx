@@ -66,6 +66,7 @@ export function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [legendOpen, setLegendOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<TipoVisualizacaoArvore>('lados');
   const [activeGeneration, setActiveGeneration] = useState(0);
@@ -126,6 +127,7 @@ export function Home() {
     const loadData = async () => {
       try {
         setIsLoading(true);
+        setLoadError(null);
 
         const [pessoasData, relacionamentosData] = await Promise.all([
           obterTodasPessoas(),
@@ -135,7 +137,9 @@ export function Home() {
         setPessoas(Array.isArray(pessoasData) ? pessoasData : []);
         setRelacionamentos(Array.isArray(relacionamentosData) ? relacionamentosData : []);
       } catch (error) {
-        console.error('Erro ao carregar dados:', error);
+        const message = error instanceof Error ? error.message : 'Erro desconhecido ao carregar dados.';
+        console.error('Erro ao carregar dados da árvore:', error);
+        setLoadError(message);
         setPessoas([]);
         setRelacionamentos([]);
       } finally {
@@ -471,8 +475,257 @@ export function Home() {
         </div>
       </header>
 
-      {/* resto do arquivo permanece igual ao atual, sem mudar a lógica da árvore */}
-      {/* mantenha todo o conteúdo abaixo como já está no arquivo atual */}
+      {canNavigateGenerations && (
+        <div className="border-b border-gray-200 bg-white px-4 py-2">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setActiveGeneration((prev) => Math.max(prev - 1, 0))}
+              disabled={activeGeneration <= 0}
+              title="Geração anterior"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="min-w-0 text-center">
+              <p className="truncate text-sm font-semibold text-gray-900">
+                {activeGenerationMeta?.label || `Geração ${activeGeneration + 1}`}
+              </p>
+              <p className="text-xs text-gray-500">
+                {activeGeneration + 1} de {maxGenerationIndex + 1}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setActiveGeneration((prev) => Math.min(prev + 1, maxGenerationIndex))}
+              disabled={activeGeneration >= maxGenerationIndex}
+              title="Próxima geração"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isMobile && legendOpen && (
+        <section className="border-b border-gray-200 bg-white px-4 py-3">
+          <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+            <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-blue-700">
+              <Activity className="h-3 w-3" />
+              Vivos
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-1 text-purple-700">
+              <Heart className="h-3 w-3" />
+              Memórias
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-amber-700">
+              <MapPin className="h-3 w-3" />
+              Locais
+            </span>
+          </div>
+        </section>
+      )}
+
+      <main className="flex min-h-0 flex-1">
+        {!isMobile && sidebarOpen && (
+          <aside className="w-80 shrink-0 overflow-y-auto border-r border-gray-200 bg-white p-4">
+            {!desktopNoticeDismissed && (
+              <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-blue-950">Visualização interativa</p>
+                    <p className="mt-1 text-xs text-blue-800">
+                      Use zoom, arraste a árvore e clique nas pessoas para abrir detalhes.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDismissDesktopNotice}
+                    className="text-xs font-medium text-blue-700 hover:text-blue-900"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <section>
+                <h2 className="mb-3 text-sm font-semibold text-gray-900">Resumo</h2>
+                <div className="grid grid-cols-2 gap-2">
+                  <Stat label="Pessoas" value={stats.totalPessoas} />
+                  <Stat label="Vivos" value={stats.pessoasVivas} />
+                  <Stat label="Falecidos" value={stats.pessoasFalecidas} />
+                  <Stat label="Pets" value={stats.pets} />
+                  <Stat label="Cônjuges" value={stats.casados} />
+                  <Stat label="Cidades" value={stats.cidadesAtuais} />
+                </div>
+              </section>
+
+              <section>
+                <h2 className="mb-3 text-sm font-semibold text-gray-900">Pessoas</h2>
+                <div className="space-y-2">
+                  <FilterButton active={personFilters.vivos} onClick={() => togglePersonFilter('vivos')}>
+                    Vivos
+                  </FilterButton>
+                  <FilterButton active={personFilters.falecidos} onClick={() => togglePersonFilter('falecidos')}>
+                    Falecidos
+                  </FilterButton>
+                  <FilterButton active={personFilters.pets} onClick={() => togglePersonFilter('pets')}>
+                    Pets
+                  </FilterButton>
+                </div>
+              </section>
+
+              <section>
+                <h2 className="mb-3 text-sm font-semibold text-gray-900">Relações</h2>
+                <div className="space-y-2">
+                  <FilterButton active={edgeFilters.conjugal} onClick={() => toggleFilter('conjugal')}>
+                    Cônjuges
+                  </FilterButton>
+                  <FilterButton active={edgeFilters.filiacao_sangue} onClick={() => toggleFilter('filiacao_sangue')}>
+                    Filiação de sangue
+                  </FilterButton>
+                  <FilterButton active={edgeFilters.filiacao_adotiva} onClick={() => toggleFilter('filiacao_adotiva')}>
+                    Filiação adotiva
+                  </FilterButton>
+                  <FilterButton active={edgeFilters.irmaos} onClick={() => toggleFilter('irmaos')}>
+                    Irmãos
+                  </FilterButton>
+                </div>
+              </section>
+
+              {stats.cidadesNascimento.length > 0 && (
+                <section>
+                  <h2 className="mb-3 text-sm font-semibold text-gray-900">Locais frequentes</h2>
+                  <div className="space-y-2">
+                    {stats.cidadesNascimento.map(([cidade, total]) => (
+                      <div key={cidade} className="flex items-center justify-between gap-3 text-sm">
+                        <span className="truncate text-gray-600">{cidade}</span>
+                        <span className="font-semibold text-gray-900">{total}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          </aside>
+        )}
+
+        <section className="relative min-w-0 flex-1 bg-gray-100">
+          {isLoading ? (
+            <StateMessage
+              title="Carregando árvore"
+              message="Buscando pessoas e relacionamentos no Supabase."
+            />
+          ) : loadError ? (
+            <StateMessage
+              title="Erro ao carregar a árvore"
+              message={loadError}
+              tone="error"
+            />
+          ) : pessoas.length === 0 ? (
+            <StateMessage
+              title="Nenhuma pessoa encontrada"
+              message="A tabela pessoas não retornou registros para renderizar a árvore."
+            />
+          ) : (
+            <FamilyTree
+              pessoas={pessoasVisiveis}
+              relacionamentos={relacionamentos}
+              onPersonClick={handlePersonClick}
+              onPersonView={handlePersonView}
+              onPersonEdit={handlePersonEdit}
+              onPersonAddConnection={handlePersonAddConnection}
+              onPersonRemove={handlePersonRemove}
+              onMarriageClick={handleMarriageClick}
+              selectedPersonId={selectedPersonId}
+              edgeFilters={edgeFilters}
+              viewMode={viewMode}
+              activeGeneration={activeGeneration}
+              isMobile={isMobile}
+              onGenerationColumnsChange={setGenerationColumns}
+            />
+          )}
+        </section>
+      </main>
+
+      <ViewMarriageModal
+        open={!!selectedMarriage}
+        marriage={selectedMarriage}
+        onClose={() => setSelectedMarriage(null)}
+      />
+
+      <AddConnectionModal
+        open={!!connectionTarget}
+        sourcePerson={connectionTarget}
+        pessoas={pessoas}
+        onClose={() => setConnectionTarget(null)}
+        onSubmit={handleAddConnectionSubmit}
+      />
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="mt-1 text-xl font-bold text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+function FilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+        active
+          ? 'border-blue-200 bg-blue-50 text-blue-900'
+          : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50',
+      ].join(' ')}
+    >
+      <span>{children}</span>
+      <span className={active ? 'text-blue-700' : 'text-gray-400'}>{active ? 'Ativo' : 'Oculto'}</span>
+    </button>
+  );
+}
+
+function StateMessage({
+  title,
+  message,
+  tone = 'neutral',
+}: {
+  title: string;
+  message: string;
+  tone?: 'neutral' | 'error';
+}) {
+  return (
+    <div className="flex h-full min-h-[500px] items-center justify-center p-6">
+      <div className="max-w-md rounded-lg border border-gray-200 bg-white p-6 text-center shadow-sm">
+        <div
+          className={[
+            'mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full',
+            tone === 'error' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700',
+          ].join(' ')}
+        >
+          <Monitor className="h-6 w-6" />
+        </div>
+        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+        <p className="mt-2 text-sm text-gray-600">{message}</p>
+      </div>
     </div>
   );
 }
