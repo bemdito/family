@@ -6,6 +6,7 @@ type SupabaseErrorLike = {
   details?: string | null;
   hint?: string | null;
   code?: string;
+  status?: number;
 };
 
 const PESSOA_COLUMNS = [
@@ -40,9 +41,38 @@ const RELACIONAMENTO_COLUMNS = [
 function logSupabaseError(context: string, error: SupabaseErrorLike) {
   console.error(`[Supabase] ${context}: ${error.message || 'Erro desconhecido'}`, {
     code: error.code,
+    status: error.status,
     details: error.details,
     hint: error.hint,
   });
+}
+
+function getSupabaseErrorMessage(tableName: string, error: SupabaseErrorLike) {
+  const rawMessage = error.message || 'Erro desconhecido do Supabase.';
+  const message = rawMessage.toLowerCase();
+  const details = (error.details || '').toLowerCase();
+  const hint = (error.hint || '').toLowerCase();
+  const combined = `${message} ${details} ${hint}`;
+
+  if (combined.includes('invalid api key') || combined.includes('invalid jwt')) {
+    return `Chave inválida: o Supabase recusou a anon key enviada ao consultar ${tableName}.`;
+  }
+
+  if (error.code === '42P01' || combined.includes('does not exist')) {
+    return `Tabela inexistente: a tabela ${tableName} não foi encontrada no Supabase.`;
+  }
+
+  if (
+    error.status === 401 ||
+    error.status === 403 ||
+    error.code === '42501' ||
+    combined.includes('permission denied') ||
+    combined.includes('row-level security')
+  ) {
+    return `RLS/permissão: leitura bloqueada para a tabela ${tableName}.`;
+  }
+
+  return `Erro ao carregar ${tableName}: ${rawMessage}`;
 }
 
 function toPessoa(row: any): Pessoa {
@@ -80,7 +110,7 @@ export async function obterTodasPessoas(): Promise<Pessoa[]> {
 
   if (error) {
     logSupabaseError('Erro ao obter pessoas da tabela pessoas', error);
-    throw new Error(`Erro ao carregar pessoas: ${error.message}`);
+    throw new Error(getSupabaseErrorMessage('pessoas', error));
   }
 
   return (data || []).map(toPessoa);
@@ -161,7 +191,7 @@ export async function obterTodosRelacionamentos(): Promise<Relacionamento[]> {
 
   if (error) {
     logSupabaseError('Erro ao obter relacionamentos da tabela relacionamentos', error);
-    throw new Error(`Erro ao carregar relacionamentos: ${error.message}`);
+    throw new Error(getSupabaseErrorMessage('relacionamentos', error));
   }
 
   return (data || []).map(toRelacionamento);

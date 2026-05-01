@@ -129,13 +129,42 @@ export function Home() {
         setIsLoading(true);
         setLoadError(null);
 
-        const [pessoasData, relacionamentosData] = await Promise.all([
+        const [pessoasResult, relacionamentosResult] = await Promise.allSettled([
           obterTodasPessoas(),
           obterTodosRelacionamentos(),
         ]);
 
+        const pessoasData = pessoasResult.status === 'fulfilled' && Array.isArray(pessoasResult.value)
+          ? pessoasResult.value
+          : [];
+        const relacionamentosData = relacionamentosResult.status === 'fulfilled' && Array.isArray(relacionamentosResult.value)
+          ? relacionamentosResult.value
+          : [];
+
         setPessoas(Array.isArray(pessoasData) ? pessoasData : []);
         setRelacionamentos(Array.isArray(relacionamentosData) ? relacionamentosData : []);
+
+        const errors = [
+          pessoasResult.status === 'rejected' ? pessoasResult.reason : null,
+          relacionamentosResult.status === 'rejected' ? relacionamentosResult.reason : null,
+        ].filter(Boolean);
+
+        if (errors.length > 0) {
+          const message = errors
+            .map((error) => error instanceof Error ? error.message : 'Erro desconhecido ao carregar dados.')
+            .join('\n');
+          setLoadError(message);
+          return;
+        }
+
+        if (pessoasData.length === 0) {
+          setLoadError('Tabela sem dados: pessoas não retornou registros.');
+          return;
+        }
+
+        if (relacionamentosData.length === 0) {
+          console.warn('[Supabase] Tabela sem dados: relacionamentos não retornou registros.');
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Erro desconhecido ao carregar dados.';
         console.error('Erro ao carregar dados da árvore:', error);
