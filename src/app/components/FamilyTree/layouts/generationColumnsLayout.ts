@@ -6,101 +6,17 @@ import {
   getSortableBirthValue,
   GenerationColumnMeta,
 } from '../types';
-
-function computeBaseGenerations(
-  childParentsMap: Map<string, Set<string>>,
-  personIds: string[]
-) {
-  const memo = new Map<string, number>();
-  const visiting = new Set<string>();
-
-  const visit = (personId: string): number => {
-    if (memo.has(personId)) return memo.get(personId)!;
-    if (visiting.has(personId)) {
-      return 0;
-    }
-
-    visiting.add(personId);
-
-    const parentIds = Array.from(childParentsMap.get(personId) || []);
-    let generation = 0;
-
-    if (parentIds.length > 0) {
-      generation = Math.max(...parentIds.map((parentId) => visit(parentId) + 1));
-    }
-
-    visiting.delete(personId);
-    memo.set(personId, generation);
-    return generation;
-  };
-
-  personIds.forEach((personId) => visit(personId));
-  return memo;
-}
-
-function computeGenerations(
-  childParentsMap: Map<string, Set<string>>,
-  personIds: string[],
-  marriageMap: Map<string, string>
-) {
-  const generations = computeBaseGenerations(childParentsMap, personIds);
-  const maxIterations = Math.max(1, personIds.length * 4);
-
-  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
-    let changed = false;
-
-    marriageMap.forEach((_, marriageKey) => {
-      const [person1Id, person2Id] = marriageKey.split('::');
-      const gen1 = generations.get(person1Id) ?? 0;
-      const gen2 = generations.get(person2Id) ?? 0;
-      const alignedGen = Math.max(gen1, gen2);
-
-      if (gen1 !== alignedGen) {
-        generations.set(person1Id, alignedGen);
-        changed = true;
-      }
-
-      if (gen2 !== alignedGen) {
-        generations.set(person2Id, alignedGen);
-        changed = true;
-      }
-    });
-
-    childParentsMap.forEach((parentIds, childId) => {
-      const parentGenerations = Array.from(parentIds).map((parentId) => generations.get(parentId) ?? 0);
-      if (parentGenerations.length === 0) return;
-
-      const desiredChildGen = Math.max(...parentGenerations) + 1;
-      const currentChildGen = generations.get(childId) ?? 0;
-
-      if (currentChildGen !== desiredChildGen) {
-        generations.set(childId, desiredChildGen);
-        changed = true;
-      }
-    });
-
-    if (!changed) break;
-  }
-
-  const minGeneration = Math.min(...Array.from(generations.values()));
-  if (Number.isFinite(minGeneration) && minGeneration !== 0) {
-    generations.forEach((level, personId) => {
-      generations.set(personId, level - minGeneration);
-    });
-  }
-
-  return generations;
-}
-
-function getGenerationLabel(level: number) {
-  return `Geração ${level + 2}`;
-}
+import {
+  computeEffectiveGenerations,
+  getGenerationLabel,
+} from './generationUtils';
 
 export function generationColumnsLayout({
   personNodes,
   marriageNodes,
   edges,
   marriageMap,
+  childrenByMarriage,
   pessoas,
   childParentsMap,
 }: TreeLayoutParams): TreeLayoutResult {
@@ -122,10 +38,10 @@ export function generationColumnsLayout({
   const marriageNodeMap = new Map(marriageNodes.map((node) => [node.id, node]));
   const pessoaById = new Map(pessoas.map((p) => [p.id, p]));
 
-  const generations = computeGenerations(
+  const generations = computeEffectiveGenerations(
     childParentsMap,
     personNodes.map((node) => node.id),
-    marriageMap
+    pessoas
   );
 
   const comparePeople = (aId: string, bId: string) => {
@@ -139,37 +55,9 @@ export function generationColumnsLayout({
     return (pessoaA?.nome_completo || '').localeCompare(pessoaB?.nome_completo || '');
   };
 
-  /**
-   * Overrides visuais por ID.
-   *
-   * -1 = coluna visual anterior à antiga "Geração 1"
-   *  0 = antiga Geração 1
-   *  1 = antiga Geração 2
-   * etc.
-   *
-   * Como o label foi renumerado com +2:
-   * -1 será exibido como "Geração 1"
-   *  0 será exibido como "Geração 2"
-   *  1 será exibido como "Geração 3"
-   */
-  const generationOverrideById = new Map<string, number>([
-    ['e07b4cd4-608a-4afd-b1a2-8b0962355403', -1],
-    ['e2402ccd-62da-4f1a-b1b2-10c214fb6b26', -1],
-  ]);
-
-  const getVisualGeneration = (personId: string) => {
-    const override = generationOverrideById.get(personId);
-
-    if (typeof override === 'number') {
-      return override;
-    }
-
-    return generations.get(personId) ?? 0;
-  };
-
   const peopleByGeneration = new Map<number, string[]>();
   personNodes.forEach((node) => {
-    const visualLevel = getVisualGeneration(node.id);
+    const visualLevel = generations.get(node.id) ?? 0;
 
     if (!peopleByGeneration.has(visualLevel)) {
       peopleByGeneration.set(visualLevel, []);
@@ -261,8 +149,8 @@ export function generationColumnsLayout({
     marriageMap.forEach((marriageNodeId, marriageKey) => {
       const [person1Id, person2Id] = marriageKey.split('::');
 
-      const person1Level = getVisualGeneration(person1Id);
-      const person2Level = getVisualGeneration(person2Id);
+      const person1Level = generations.get(person1Id) ?? 0;
+      const person2Level = generations.get(person2Id) ?? 0;
 
       if (person1Level !== level || person2Level !== level) return;
 
@@ -363,7 +251,7 @@ export function generationColumnsLayout({
   const validEdges = edges
     .filter((edge) => positionedNodeIds.has(edge.source) && positionedNodeIds.has(edge.target))
     .map((edge) => {
-      if (edge.type !== 'orthogonalChild') return edge;
+      if (!['orthogonalChild', 'childEdge', 'siblingEdge'].includes(edge.type || '')) return edge;
 
       const sourceNode = positionedNodes.find((node) => node.id === edge.source);
       const targetNode = positionedNodes.find((node) => node.id === edge.target);
@@ -372,7 +260,13 @@ export function generationColumnsLayout({
       const edgeKind = (edge.data as { kind?: string } | undefined)?.kind;
 
       if (edgeKind === 'siblings') {
-        return edge;
+        return {
+          ...edge,
+          data: {
+            ...(edge.data || {}),
+            corridorX: Math.min(sourceNode.position.x, targetNode.position.x) - 40,
+          },
+        };
       }
 
       if (edgeKind === 'singleParentChild') {
@@ -394,7 +288,34 @@ export function generationColumnsLayout({
       const sourceCenterX =
         sourceNode.position.x +
         (sourceNode.type === 'marriageNode' ? MARRIAGE_NODE_WIDTH / 2 : NODE_WIDTH / 2);
+      const sourceCenterY =
+        sourceNode.position.y +
+        (sourceNode.type === 'marriageNode' ? MARRIAGE_NODE_WIDTH / 2 : NODE_HEIGHT / 2);
       const targetLeftX = targetNode.position.x;
+      const targetCenterY = targetNode.position.y + NODE_HEIGHT / 2;
+
+      if (sourceNode.type === 'marriageNode') {
+        const childIds = childrenByMarriage.get(sourceNode.id) || [targetNode.id];
+        const childCenterYs = childIds
+          .map((childId) => positionedNodes.find((node) => node.id === childId))
+          .filter((node): node is Node => Boolean(node))
+          .map((node) => node.position.y + NODE_HEIGHT / 2);
+        const trunkX = targetLeftX - 72;
+
+        return {
+          ...edge,
+          type: 'childEdge',
+          data: {
+            ...(edge.data || {}),
+            kind: 'familyChild',
+            startX: sourceCenterX,
+            startY: sourceCenterY,
+            trunkX,
+            trunkMinY: Math.min(sourceCenterY, targetCenterY, ...childCenterYs),
+            trunkMaxY: Math.max(sourceCenterY, targetCenterY, ...childCenterYs),
+          },
+        };
+      }
 
       return {
         ...edge,

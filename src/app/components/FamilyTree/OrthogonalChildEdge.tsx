@@ -6,11 +6,16 @@ interface OrthogonalEdgeData {
   corridorY?: number;
   side?: 'left' | 'right';
   offset?: number;
-  kind?: 'child' | 'siblings' | 'singleParentChild' | 'generationChild';
+  kind?: 'child' | 'familyChild' | 'siblings' | 'singleParentChild' | 'generationChild';
   nodeWidth?: number;
   nodeHeight?: number;
   attachGap?: number;
   attachYOffset?: number;
+  startX?: number;
+  startY?: number;
+  trunkX?: number;
+  trunkMinY?: number;
+  trunkMaxY?: number;
 }
 
 export function OrthogonalChildEdge({
@@ -23,17 +28,32 @@ export function OrthogonalChildEdge({
   markerEnd,
   data,
 }: EdgeProps<OrthogonalEdgeData>) {
-  if (data?.kind === 'siblings') {
-    const nodeWidth = data.nodeWidth ?? 280;
-    const nodeHeight = data.nodeHeight ?? 120;
-    const attachGap = data.attachGap ?? 16;
-    const attachYOffset = data.attachYOffset ?? 42;
+  if (data?.kind === 'familyChild') {
+    const startX = data.startX ?? sourceX;
+    const startY = data.startY ?? sourceY;
+    const trunkX = data.trunkX ?? sourceX + (targetX - sourceX) / 2;
+    const trunkMinY = data.trunkMinY ?? Math.min(startY, targetY);
+    const trunkMaxY = data.trunkMaxY ?? Math.max(startY, targetY);
 
-    const sourceSideX = sourceX - nodeWidth / 2;
-    const targetSideX = targetX - nodeWidth / 2;
-    const sourceSideY = sourceY - nodeHeight + attachYOffset;
-    const targetSideY = targetY + attachYOffset;
-    const corridorX = Math.min(sourceSideX, targetSideX) - attachGap;
+    const path = [
+      `M ${startX} ${startY}`,
+      `L ${trunkX} ${startY}`,
+      `M ${trunkX} ${trunkMinY}`,
+      `L ${trunkX} ${trunkMaxY}`,
+      `M ${trunkX} ${targetY}`,
+      `L ${targetX} ${targetY}`,
+    ].join(' ');
+
+    return <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />;
+  }
+
+  if (data?.kind === 'siblings') {
+    const attachGap = data.attachGap ?? 16;
+    const sourceSideX = sourceX;
+    const targetSideX = targetX;
+    const sourceSideY = sourceY;
+    const targetSideY = targetY;
+    const corridorX = data.corridorX ?? Math.min(sourceSideX, targetSideX) - attachGap;
 
     const path = [
       `M ${sourceSideX} ${sourceSideY}`,

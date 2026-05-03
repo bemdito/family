@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS pessoas (
   local_atual VARCHAR(255),
   foto_principal_url TEXT,
   humano_ou_pet VARCHAR(20) NOT NULL DEFAULT 'Humano' CHECK (humano_ou_pet IN ('Humano', 'Pet')),
+  lado VARCHAR(20) DEFAULT 'esquerda' CHECK (lado IN ('esquerda', 'direita')),
+  manual_generation SMALLINT CHECK (manual_generation IS NULL OR manual_generation BETWEEN 1 AND 7),
   cor_bg_card VARCHAR(20), -- Cor de fundo do card (hex)
   minibio TEXT,
   curiosidades TEXT,
@@ -35,6 +37,8 @@ CREATE TABLE IF NOT EXISTS pessoas (
 -- Índices para melhor performance
 CREATE INDEX IF NOT EXISTS idx_pessoas_nome ON pessoas(nome_completo);
 CREATE INDEX IF NOT EXISTS idx_pessoas_tipo ON pessoas(humano_ou_pet);
+CREATE INDEX IF NOT EXISTS idx_pessoas_lado ON pessoas(lado);
+CREATE INDEX IF NOT EXISTS idx_pessoas_manual_generation ON pessoas(manual_generation);
 CREATE INDEX IF NOT EXISTS idx_pessoas_created_at ON pessoas(created_at);
 
 -- =====================================================
@@ -198,6 +202,7 @@ COMMENT ON TABLE arquivos_historicos IS 'Fotos e documentos históricos associad
 
 COMMENT ON COLUMN pessoas.data_nascimento IS 'Flexível: aceita ano (1990) ou data completa (15/03/1990)';
 COMMENT ON COLUMN pessoas.humano_ou_pet IS 'Tipo da entidade: Humano ou Pet';
+COMMENT ON COLUMN pessoas.manual_generation IS 'Geração manual da árvore: 1 a 7. NULL usa cálculo automático.';
 COMMENT ON COLUMN pessoas.cor_bg_card IS 'Cor de fundo personalizada do card na árvore (formato hex)';
 
 COMMENT ON COLUMN relacionamentos.tipo_relacionamento IS 'Tipo: pai, mae, filho, conjuge, irmao';

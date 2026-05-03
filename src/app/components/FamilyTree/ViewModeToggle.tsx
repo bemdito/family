@@ -1,5 +1,5 @@
 import React from 'react';
-import { Columns3, Users } from 'lucide-react';
+import { Columns3, List, Users } from 'lucide-react';
 import { TipoVisualizacaoArvore } from '../../types';
 
 interface ViewModeToggleProps {
@@ -23,6 +23,11 @@ const OPTIONS: Array<{
     value: 'geracoes',
     label: 'Por gerações',
     Icon: Columns3,
+  },
+  {
+    value: 'lista',
+    label: 'Lista',
+    Icon: List,
   },
 ];
 

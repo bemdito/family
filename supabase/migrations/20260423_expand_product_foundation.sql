@@ -6,6 +6,7 @@
 -- =====================================================
 
 create extension if not exists "uuid-ossp";
+create extension if not exists "pgcrypto";
 
 -- =====================================================
 -- AMPLIAÇÃO DA TABELA PESSOAS
@@ -15,10 +16,37 @@ alter table if exists pessoas
   add column if not exists instagram_url text,
   add column if not exists permitir_exibir_instagram boolean default false,
   add column if not exists permitir_mensagens_whatsapp boolean default false,
-  add column if not exists geracao_sociologica varchar(80);
+  add column if not exists geracao_sociologica varchar(80),
+  add column if not exists lado varchar(20) default 'esquerda',
+  add column if not exists manual_generation smallint;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'pessoas_lado_check'
+  ) then
+    alter table pessoas
+      add constraint pessoas_lado_check
+      check (lado in ('esquerda', 'direita'));
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'pessoas_manual_generation_range'
+  ) then
+    alter table pessoas
+      add constraint pessoas_manual_generation_range
+      check (manual_generation is null or manual_generation between 1 and 7);
+  end if;
+end $$;
 
 create index if not exists idx_pessoas_geracao_sociologica on pessoas(geracao_sociologica);
 create index if not exists idx_pessoas_instagram_usuario on pessoas(instagram_usuario);
+create index if not exists idx_pessoas_lado on pessoas(lado);
+create index if not exists idx_pessoas_manual_generation on pessoas(manual_generation);
 
 -- =====================================================
 -- PERFIS DE USUÁRIO
@@ -38,7 +66,7 @@ create index if not exists idx_profiles_role on profiles(role);
 -- VÍNCULO ENTRE USUÁRIO E PESSOA DA ÁRVORE
 -- =====================================================
 create table if not exists user_person_links (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   pessoa_id uuid not null references pessoas(id) on delete cascade,
   relacao_com_perfil varchar(100),
@@ -54,7 +82,7 @@ create index if not exists idx_user_person_links_pessoa on user_person_links(pes
 -- FAVORITOS
 -- =====================================================
 create table if not exists user_favorites (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   tipo_conteudo varchar(40) not null check (tipo_conteudo in ('pessoa', 'arquivo', 'topico', 'evento', 'pagina', 'historia')),
   conteudo_id varchar(255) not null,
@@ -70,7 +98,7 @@ create index if not exists idx_user_favorites_tipo on user_favorites(tipo_conteu
 -- PREFERÊNCIAS DE NOTIFICAÇÃO
 -- =====================================================
 create table if not exists notification_preferences (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique references auth.users(id) on delete cascade,
   receber_aniversarios boolean not null default true,
   receber_datas_memoria boolean not null default true,
@@ -87,7 +115,7 @@ create table if not exists notification_preferences (
 -- NOTIFICAÇÕES
 -- =====================================================
 create table if not exists notifications (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   titulo varchar(255) not null,
   mensagem text not null,
@@ -107,7 +135,7 @@ create index if not exists idx_notifications_tipo on notifications(tipo);
 -- EVENTOS DA FAMÍLIA
 -- =====================================================
 create table if not exists family_events (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   titulo varchar(255) not null,
   descricao text,
   data_inicio timestamptz not null,
@@ -124,7 +152,7 @@ create index if not exists idx_family_events_data_inicio on family_events(data_i
 create index if not exists idx_family_events_tipo on family_events(tipo);
 
 create table if not exists event_attendees (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   event_id uuid not null references family_events(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   status varchar(20) not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'tentative')),

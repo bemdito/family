@@ -2,6 +2,7 @@ import React from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { User, Dog, Eye, Pencil, Link2, Trash2 } from 'lucide-react';
 import { PersonNodeData } from './types';
+import { FAMILY_TREE_COLORS, hasDeathDate } from './visualTokens';
 
 function ActionButton({
   label,
@@ -38,7 +39,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
   const menuRef = React.useRef<HTMLDivElement | null>(null);
 
   const isPet = pessoa.humano_ou_pet === 'Pet';
-  const isFalecido = !!pessoa.data_falecimento;
+  const isFalecido = hasDeathDate(pessoa.data_falecimento);
 
   const handleClick = React.useCallback(() => {
     onClick?.(pessoa);
@@ -76,16 +77,15 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
   }, [menuOpen]);
 
   const getBorderColor = () => {
-    if (isSelected) return 'border-blue-600';
-    if (isPet) return 'border-yellow-500';
-    if (isFalecido) return 'border-purple-500';
-    return 'border-blue-500';
+    if (isPet) return FAMILY_TREE_COLORS.CARD_BORDER_PET;
+    if (isFalecido) return FAMILY_TREE_COLORS.CARD_BORDER_DECEASED;
+    return FAMILY_TREE_COLORS.CARD_BORDER_ALIVE;
   };
 
   return (
     <div className="relative" ref={menuRef}>
       <div
-        className={`cursor-pointer rounded-lg border-2 px-4 py-3 shadow-md transition-all hover:shadow-lg ${getBorderColor()} ${
+        className={`cursor-pointer rounded-lg border-2 px-4 py-3 shadow-md transition-all hover:shadow-lg ${
           isSelected ? 'ring-2 ring-blue-300' : ''
         }`}
         onClick={handleClick}
@@ -98,6 +98,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
           flexDirection: 'column',
           justifyContent: 'center',
           backgroundColor: pessoa.cor_bg_card || '#ffffff',
+          borderColor: getBorderColor(),
         }}
       >
         <Handle
@@ -121,9 +122,17 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
 
         <Handle type="source" position={Position.Right} id="right-source" style={{ right: 0, top: '50%' }} />
         <Handle type="target" position={Position.Right} id="right-target" style={{ right: 0, top: '50%' }} />
+        <Handle type="source" position={Position.Right} id="spouse-right" style={{ right: 0, top: '50%' }} />
+        <Handle type="target" position={Position.Right} id="spouse-right-target" style={{ right: 0, top: '50%' }} />
+        <Handle type="source" position={Position.Right} id="child-right" style={{ right: 0, top: '50%' }} />
+        <Handle type="target" position={Position.Right} id="sibling-right" style={{ right: 0, top: '50%' }} />
 
         <Handle type="source" position={Position.Left} id="left-source" style={{ left: 0, top: '50%' }} />
         <Handle type="target" position={Position.Left} id="left-target" style={{ left: 0, top: '50%' }} />
+        <Handle type="target" position={Position.Left} id="spouse-left" style={{ left: 0, top: '50%' }} />
+        <Handle type="source" position={Position.Left} id="spouse-left-source" style={{ left: 0, top: '50%' }} />
+        <Handle type="target" position={Position.Left} id="child-left" style={{ left: 0, top: '50%' }} />
+        <Handle type="source" position={Position.Left} id="sibling-left" style={{ left: 0, top: '50%' }} />
 
         <div className="flex items-start gap-3">
           <div

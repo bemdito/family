@@ -4,16 +4,22 @@ import {
   TREE_CONSTANTS,
   TreeLayoutParams,
   TreeLayoutResult,
+  GenerationColumnMeta,
   isLeftSidePerson,
   isRightSidePerson,
   getStablePersonComparator,
 } from '../types';
+import {
+  computeEffectiveGenerations,
+  getGenerationLabel,
+} from './generationUtils';
 
 export function legacySideLayout({
   personNodes,
   marriageNodes,
   edges,
   marriageMap,
+  childrenByMarriage,
   pessoas,
   childParentsMap,
 }: TreeLayoutParams): TreeLayoutResult {
@@ -27,80 +33,17 @@ export function legacySideLayout({
     INITIAL_X,
     INITIAL_Y,
   } = TREE_CONSTANTS;
+  const HEADER_OFFSET_Y = 72;
 
   const parentColumnRightOffsetFromMarriage =
     NODE_WIDTH + HORIZONTAL_GAP_BETWEEN_SPOUSES / 2 + MARRIAGE_NODE_WIDTH / 2;
 
-  const parentToChildrenMap = new Map<string, string[]>();
-
-  childParentsMap.forEach((parentIds, childId) => {
-    parentIds.forEach((parentId) => {
-      if (!parentToChildrenMap.has(parentId)) {
-        parentToChildrenMap.set(parentId, []);
-      }
-      parentToChildrenMap.get(parentId)!.push(childId);
-    });
-  });
-
-  const generations = new Map<string, number>();
-  const visiting = new Set<string>();
-
-  function setGeneration(personId: string, level: number) {
-    const current = generations.get(personId);
-    if (current === undefined || level > current) {
-      generations.set(personId, level);
-    }
-  }
-
-  function calculateGeneration(personId: string, level: number = 0) {
-    if (visiting.has(personId)) return;
-    visiting.add(personId);
-
-    setGeneration(personId, level);
-
-    const children = parentToChildrenMap.get(personId) || [];
-    children.forEach((childId) => {
-      calculateGeneration(childId, level + 1);
-    });
-
-    visiting.delete(personId);
-  }
-
-  const allChildren = new Set<string>();
-  childParentsMap.forEach((_, childId) => allChildren.add(childId));
-
   const availablePersonIds = new Set(personNodes.map((n) => n.id));
-
-  personNodes.forEach((node) => {
-    if (!allChildren.has(node.id)) {
-      calculateGeneration(node.id, 0);
-    }
-  });
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-
-    childParentsMap.forEach((parentIds, childId) => {
-      const childGen = generations.get(childId) ?? 0;
-      let maxParentGen = -1;
-
-      parentIds.forEach((parentId) => {
-        const parentGen = generations.get(parentId);
-        if (parentGen !== undefined) {
-          maxParentGen = Math.max(maxParentGen, parentGen);
-        }
-      });
-
-      if (maxParentGen >= 0) {
-        const desiredChildGen = maxParentGen + 1;
-        if (childGen < desiredChildGen) {
-          generations.set(childId, desiredChildGen);
-          changed = true;
-        }
-      }
-    });
-  }
+  const generations = computeEffectiveGenerations(
+    childParentsMap,
+    Array.from(availablePersonIds),
+    pessoas
+  );
 
   const getPessoaById = (id: string) => pessoas.find((p) => p.id === id);
 
@@ -132,66 +75,12 @@ export function legacySideLayout({
     return [orderedIds[0], orderedIds[1]];
   };
 
-  marriageMap.forEach((_, marriageKey) => {
-    const [person1Id, person2Id] = marriageKey.split('::');
-    const gen1 = generations.get(person1Id);
-    const gen2 = generations.get(person2Id);
-
-    if (gen1 !== undefined && gen2 !== undefined && gen1 !== gen2) {
-      const maxGen = Math.max(gen1, gen2);
-      generations.set(person1Id, maxGen);
-      generations.set(person2Id, maxGen);
-    }
-  });
-
-  let changedAfterSpouseAlignment = true;
-
-  while (changedAfterSpouseAlignment) {
-    changedAfterSpouseAlignment = false;
-
-    childParentsMap.forEach((parentIds, childId) => {
-      let maxParentGen = -1;
-
-      parentIds.forEach((parentId) => {
-        const parentGen = generations.get(parentId);
-        if (parentGen !== undefined) {
-          maxParentGen = Math.max(maxParentGen, parentGen);
-        }
-      });
-
-      if (maxParentGen >= 0) {
-        const desiredChildGen = maxParentGen + 1;
-        const currentChildGen = generations.get(childId) ?? 0;
-
-        if (currentChildGen < desiredChildGen) {
-          generations.set(childId, desiredChildGen);
-          changedAfterSpouseAlignment = true;
-        }
-      }
-    });
-  }
-
-  /**
-   * Mesmo override visual usado no modo "geracoes".
-   * Aqui deslocamos as pessoas para uma coluna anterior.
-   */
-  const generationOverrideById = new Map<string, number>([
-    ['e07b4cd4-608a-4afd-b1a2-8b0962355403', -1],
-    ['e2402ccd-62da-4f1a-b1b2-10c214fb6b26', -1],
-  ]);
-
-  const getVisualGeneration = (personId: string) => {
-    const override = generationOverrideById.get(personId);
-    if (typeof override === 'number') return override;
-    return generations.get(personId) ?? 0;
-  };
-
   const peopleByGeneration = new Map<number, string[]>();
 
   personNodes.forEach((node) => {
     if (!availablePersonIds.has(node.id)) return;
 
-    const level = getVisualGeneration(node.id);
+    const level = generations.get(node.id) ?? 0;
 
     if (!peopleByGeneration.has(level)) {
       peopleByGeneration.set(level, []);
@@ -203,9 +92,38 @@ export function legacySideLayout({
   const positionedNodes: Node[] = [];
   const sortedLevels = Array.from(peopleByGeneration.keys()).sort((a, b) => a - b);
   const minLevel = sortedLevels.length > 0 ? Math.min(...sortedLevels) : 0;
+  const maxLevel = sortedLevels.length > 0 ? Math.max(...sortedLevels) : 0;
+  const allLevels = Array.from(
+    { length: maxLevel - minLevel + 1 },
+    (_, index) => minLevel + index
+  );
 
   const getColumnX = (level: number) =>
     INITIAL_X + (level - minLevel) * HORIZONTAL_GAP_BETWEEN_GENERATIONS;
+
+  const generationColumns: GenerationColumnMeta[] = allLevels.map((level) => ({
+    level,
+    label: getGenerationLabel(level),
+    x: getColumnX(level),
+  }));
+
+  generationColumns.forEach((column) => {
+    positionedNodes.push({
+      id: `generation-header-lados-${column.level}`,
+      type: 'generationHeaderNode',
+      data: {
+        label: column.label,
+        generation: column.level,
+      },
+      position: {
+        x: column.x,
+        y: Math.max(0, INITIAL_Y - HEADER_OFFSET_Y),
+      },
+      draggable: false,
+      selectable: false,
+      connectable: false,
+    });
+  });
 
   sortedLevels.forEach((level) => {
     const peopleInLevel = [...(peopleByGeneration.get(level) || [])];
@@ -343,8 +261,7 @@ export function legacySideLayout({
           const leftX = currentX;
           const marriageX =
             currentX + NODE_WIDTH + HORIZONTAL_GAP_BETWEEN_SPOUSES / 2 - MARRIAGE_NODE_WIDTH / 2;
-          const rightX =
-            currentX + NODE_WIDTH + HORIZONTAL_GAP_BETWEEN_SPOUSES + MARRIAGE_NODE_WIDTH;
+          const rightX = currentX + NODE_WIDTH + HORIZONTAL_GAP_BETWEEN_SPOUSES;
 
           if (leftNode) {
             leftNode.position = { x: leftX, y: unitStartY };
@@ -393,14 +310,33 @@ export function legacySideLayout({
   const validEdges = edges
     .filter((edge) => positionedIds.has(edge.source) && positionedIds.has(edge.target))
     .map((edge) => {
-      if (edge.type !== 'orthogonalChild') {
-        return edge;
-      }
-
       const sourceNode = positionedNodes.find((node) => node.id === edge.source);
       const targetNode = positionedNodes.find((node) => node.id === edge.target);
 
       if (!sourceNode || !targetNode) {
+        return edge;
+      }
+
+      const isMarriageConnection =
+        (edge.type === 'straight' || edge.type === 'spouseEdge') &&
+        (sourceNode.type === 'marriageNode' || targetNode.type === 'marriageNode') &&
+        sourceNode.type !== targetNode.type;
+
+      if (isMarriageConnection) {
+        const leftNode = sourceNode.position.x <= targetNode.position.x ? sourceNode : targetNode;
+        const rightNode = leftNode.id === sourceNode.id ? targetNode : sourceNode;
+
+        return {
+          ...edge,
+          source: leftNode.id,
+          sourceHandle: leftNode.type === 'marriageNode' ? 'right' : 'spouse-right',
+          target: rightNode.id,
+          targetHandle: rightNode.type === 'marriageNode' ? 'left' : 'spouse-left',
+          type: 'spouseEdge',
+        };
+      }
+
+      if (!['orthogonalChild', 'childEdge', 'siblingEdge'].includes(edge.type || '')) {
         return edge;
       }
 
@@ -413,8 +349,45 @@ export function legacySideLayout({
         edgeKind !== 'siblings' &&
         edgeKind !== 'singleParentChild';
 
+      if (edgeKind === 'siblings') {
+        return {
+          ...edge,
+          data: {
+            ...(edge.data || {}),
+            corridorX: Math.min(sourceNode.position.x, targetNode.position.x) - 40,
+          },
+        };
+      }
+
       const isSingleParentChild = edgeKind === 'singleParentChild';
       const singleParentSourceX = sourceNode.position.x + NODE_WIDTH / 2;
+
+      if (isMarriageToChild) {
+        const childIds = childrenByMarriage.get(sourceNode.id) || [targetNode.id];
+        const childCenterYs = childIds
+          .map((childId) => positionedNodes.find((node) => node.id === childId))
+          .filter((node): node is Node => Boolean(node))
+          .map((node) => node.position.y + NODE_HEIGHT / 2);
+        const sourceCenterX = sourceNode.position.x + MARRIAGE_NODE_WIDTH / 2;
+        const sourceCenterY = sourceNode.position.y + MARRIAGE_NODE_WIDTH / 2;
+        const targetLeftX = targetNode.position.x;
+        const targetCenterY = targetNode.position.y + NODE_HEIGHT / 2;
+        const trunkX = targetLeftX - 72;
+
+        return {
+          ...edge,
+          type: 'childEdge',
+          data: {
+            ...(edge.data || {}),
+            kind: 'familyChild',
+            startX: sourceCenterX,
+            startY: sourceCenterY,
+            trunkX,
+            trunkMinY: Math.min(sourceCenterY, targetCenterY, ...childCenterYs),
+            trunkMaxY: Math.max(sourceCenterY, targetCenterY, ...childCenterYs),
+          },
+        };
+      }
 
       const corridorX = isMarriageToChild
         ? childColumnLeftX - 72
@@ -434,6 +407,8 @@ export function legacySideLayout({
   return {
     nodes: positionedNodes,
     edges: validEdges,
-    metadata: {},
+    metadata: {
+      generationColumns,
+    },
   };
 }

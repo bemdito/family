@@ -1,12 +1,13 @@
-import { Edge, MarkerType, Node } from 'reactflow';
+import { Edge, Node } from 'reactflow';
+import { Relacionamento } from '../../types';
 import {
   FamilyTreeBuildParams,
   TreeGraphBuildResult,
   DEFAULT_EDGE_FILTERS,
-  TREE_CONSTANTS,
   getSortableBirthValue,
   MarriageNodeDetails,
 } from './types';
+import { FAMILY_TREE_COLORS } from './visualTokens';
 
 export function buildTreeGraph({
   pessoas,
@@ -25,8 +26,31 @@ export function buildTreeGraph({
   const pessoaById = new Map(pessoas.map((pessoa) => [pessoa.id, pessoa]));
   const conjugalRels = relacionamentos.filter((r) => r.tipo_relacionamento === 'conjuge');
   const filiacaoRels = relacionamentos.filter(
-    (r) => r.tipo_relacionamento === 'pai' || r.tipo_relacionamento === 'mae'
+    (r) =>
+      r.tipo_relacionamento === 'pai' ||
+      r.tipo_relacionamento === 'mae' ||
+      r.tipo_relacionamento === 'filho'
   );
+
+  const getParentChildIds = (rel: Relacionamento) => {
+    if (rel.tipo_relacionamento === 'filho') {
+      return {
+        childId: rel.pessoa_destino_id,
+        parentId: rel.pessoa_origem_id,
+      };
+    }
+
+    return {
+      childId: rel.pessoa_origem_id,
+      parentId: rel.pessoa_destino_id,
+    };
+  };
+
+  const findFiliacaoRelationship = (childId: string, parentId?: string) =>
+    filiacaoRels.find((rel) => {
+      const ids = getParentChildIds(rel);
+      return ids.childId === childId && (!parentId || ids.parentId === parentId);
+    });
 
   const personNodes: Node[] = pessoas.map((pessoa) => ({
     id: pessoa.id,
@@ -46,8 +70,7 @@ export function buildTreeGraph({
   const childParentsMap = new Map<string, Set<string>>();
 
   filiacaoRels.forEach((rel) => {
-    const childId = rel.pessoa_origem_id;
-    const parentId = rel.pessoa_destino_id;
+    const { childId, parentId } = getParentChildIds(rel);
 
     if (!childId || !parentId) return;
 
@@ -125,6 +148,24 @@ export function buildTreeGraph({
     }
   });
 
+  const sortPersonIdsByBirth = (personIds: string[]) =>
+    [...personIds].sort((personAId, personBId) => {
+      const pessoaA = pessoaById.get(personAId);
+      const pessoaB = pessoaById.get(personBId);
+      const birthA = getSortableBirthValue(pessoaA?.data_nascimento);
+      const birthB = getSortableBirthValue(pessoaB?.data_nascimento);
+
+      if (birthA !== birthB) {
+        return birthA - birthB;
+      }
+
+      return (pessoaA?.nome_completo || '').localeCompare(pessoaB?.nome_completo || '');
+    });
+
+  childrenByMarriage.forEach((childrenIds, marriageNodeId) => {
+    childrenByMarriage.set(marriageNodeId, sortPersonIdsByBirth(childrenIds));
+  });
+
   const edges: Edge[] = [];
   let edgeIdCounter = 0;
   const nodeIdsSet = new Set<string>([...personNodes, ...marriageNodes].map((n) => n.id));
@@ -140,13 +181,13 @@ export function buildTreeGraph({
       edges.push({
         id: `edge-conjugal-${edgeIdCounter++}`,
         source: parent1Id,
-        sourceHandle: 'bottom',
+        sourceHandle: 'spouse-right',
         target: marriageNodeId,
-        targetHandle: 'top',
-        type: 'straight',
+        targetHandle: 'left',
+        type: 'spouseEdge',
         animated: false,
         style: {
-          stroke: '#10b981',
+          stroke: FAMILY_TREE_COLORS.EDGE_SPOUSE,
           strokeWidth: 3,
         },
       });
@@ -154,13 +195,13 @@ export function buildTreeGraph({
       edges.push({
         id: `edge-conjugal-${edgeIdCounter++}`,
         source: marriageNodeId,
-        sourceHandle: 'bottom',
+        sourceHandle: 'right',
         target: parent2Id,
-        targetHandle: 'top',
-        type: 'straight',
+        targetHandle: 'spouse-left',
+        type: 'spouseEdge',
         animated: false,
         style: {
-          stroke: '#10b981',
+          stroke: FAMILY_TREE_COLORS.EDGE_SPOUSE,
           strokeWidth: 3,
         },
       });
@@ -173,7 +214,7 @@ export function buildTreeGraph({
     childrenIds.forEach((childId) => {
       if (!nodeIdsSet.has(childId)) return;
 
-      const filiacaoRel = filiacaoRels.find((r) => r.pessoa_origem_id === childId);
+      const filiacaoRel = findFiliacaoRelationship(childId);
       const isAdoptive = filiacaoRel?.subtipo_relacionamento === 'adotivo';
 
       if (isAdoptive && !filters.filiacao_adotiva) return;
@@ -182,16 +223,15 @@ export function buildTreeGraph({
       edges.push({
         id: `edge-filiacao-${edgeIdCounter++}`,
         source: marriageNodeId,
-        sourceHandle: 'right',
+        sourceHandle: 'family-center',
         target: childId,
-        targetHandle: 'left-target',
-        type: 'orthogonalChild',
+        targetHandle: 'child-left',
+        type: 'childEdge',
         animated: false,
-        data: { kind: 'child' },
+        data: { kind: 'familyChild' },
         style: {
-          stroke: isAdoptive ? '#9333ea' : '#10b981',
+          stroke: FAMILY_TREE_COLORS.EDGE_CHILD,
           strokeWidth: 2,
-          strokeDasharray: '5,5',
         },
       });
     });
@@ -199,59 +239,67 @@ export function buildTreeGraph({
 
   if (filters.irmaos) {
     const processedSiblingGroups = new Set<string>();
+    const childrenBySharedParent = new Map<string, string[]>();
 
     childrenByMarriage.forEach((childrenIds) => {
+      childrenIds.forEach((childId) => {
+        const parentIds = Array.from(childParentsMap.get(childId) || []).sort();
+        parentIds.forEach((parentId) => {
+          if (!childrenBySharedParent.has(parentId)) {
+            childrenBySharedParent.set(parentId, []);
+          }
+
+          const group = childrenBySharedParent.get(parentId)!;
+          if (!group.includes(childId)) {
+            group.push(childId);
+          }
+        });
+      });
+    });
+
+    childParentsMap.forEach((parentIds, childId) => {
+      parentIds.forEach((parentId) => {
+        if (!childrenBySharedParent.has(parentId)) {
+          childrenBySharedParent.set(parentId, []);
+        }
+
+        const group = childrenBySharedParent.get(parentId)!;
+        if (!group.includes(childId)) {
+          group.push(childId);
+        }
+      });
+    });
+
+    childrenBySharedParent.forEach((childrenIds) => {
       if (childrenIds.length < 2) return;
 
-      const groupId = [...childrenIds].sort().join('::');
+      const siblingsWithDates = sortPersonIdsByBirth(childrenIds);
+      const groupId = siblingsWithDates.join('::');
       if (processedSiblingGroups.has(groupId)) return;
       processedSiblingGroups.add(groupId);
 
-      const siblingsWithDates = childrenIds
-        .map((childId) => {
-          const pessoa = pessoaById.get(childId);
-          return {
-            id: childId,
-            sortableBirth: getSortableBirthValue(pessoa?.data_nascimento),
-            nome: pessoa?.nome_completo || '',
-          };
-        })
-        .sort((a, b) => {
-          if (a.sortableBirth !== b.sortableBirth) {
-            return a.sortableBirth - b.sortableBirth;
-          }
-          return a.nome.localeCompare(b.nome);
-        });
-
       for (let i = 0; i < siblingsWithDates.length - 1; i++) {
-        const sibling1 = siblingsWithDates[i].id;
-        const sibling2 = siblingsWithDates[i + 1].id;
+        const sibling1 = siblingsWithDates[i];
+        const sibling2 = siblingsWithDates[i + 1];
 
         if (!nodeIdsSet.has(sibling1) || !nodeIdsSet.has(sibling2)) continue;
 
         edges.push({
           id: `edge-siblings-${edgeIdCounter++}`,
           source: sibling1,
-          sourceHandle: 'bottom',
+          sourceHandle: 'sibling-left',
           target: sibling2,
-          targetHandle: 'top',
-          type: 'orthogonalChild',
+          targetHandle: 'sibling-left',
+          type: 'siblingEdge',
           animated: false,
           data: {
             kind: 'siblings',
-            nodeWidth: TREE_CONSTANTS.NODE_WIDTH,
-            nodeHeight: TREE_CONSTANTS.NODE_HEIGHT,
             attachGap: 16,
-            attachYOffset: 42,
           },
           style: {
-            stroke: '#f59e0b',
+            stroke: FAMILY_TREE_COLORS.EDGE_SIBLING,
             strokeWidth: 2,
             strokeDasharray: '5,5',
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: '#f59e0b',
           },
         });
       }
@@ -264,9 +312,7 @@ export function buildTreeGraph({
 
       if (!nodeIdsSet.has(childId) || !nodeIdsSet.has(parentId)) return;
 
-      const filiacaoRel = filiacaoRels.find(
-        (r) => r.pessoa_origem_id === childId && r.pessoa_destino_id === parentId
-      );
+      const filiacaoRel = findFiliacaoRelationship(childId, parentId);
       const isAdoptive = filiacaoRel?.subtipo_relacionamento === 'adotivo';
 
       if (isAdoptive && !filters.filiacao_adotiva) return;
@@ -275,19 +321,18 @@ export function buildTreeGraph({
       edges.push({
         id: `edge-filiacao-single-${edgeIdCounter++}`,
         source: parentId,
-        sourceHandle: 'bottom',
+        sourceHandle: 'child-right',
         target: childId,
-        targetHandle: 'left-target',
-        type: 'orthogonalChild',
+        targetHandle: 'child-left',
+        type: 'childEdge',
         animated: false,
         data: {
           kind: 'singleParentChild',
           offset: 28,
         },
         style: {
-          stroke: isAdoptive ? '#9333ea' : '#10b981',
+          stroke: FAMILY_TREE_COLORS.EDGE_CHILD,
           strokeWidth: 2,
-          strokeDasharray: '5,5',
         },
       });
 
@@ -303,9 +348,7 @@ export function buildTreeGraph({
       parentIds.forEach((parentId) => {
         if (!nodeIdsSet.has(childId) || !nodeIdsSet.has(parentId)) return;
 
-        const filiacaoRel = filiacaoRels.find(
-          (r) => r.pessoa_origem_id === childId && r.pessoa_destino_id === parentId
-        );
+        const filiacaoRel = findFiliacaoRelationship(childId, parentId);
         const isAdoptive = filiacaoRel?.subtipo_relacionamento === 'adotivo';
 
         if (isAdoptive && !filters.filiacao_adotiva) return;
@@ -314,19 +357,18 @@ export function buildTreeGraph({
         edges.push({
           id: `edge-filiacao-unmarried-${edgeIdCounter++}`,
           source: parentId,
-          sourceHandle: 'bottom',
+          sourceHandle: 'child-right',
           target: childId,
-          targetHandle: 'top',
-          type: 'smoothstep',
+          targetHandle: 'child-left',
+          type: 'childEdge',
           animated: false,
-          style: {
-            stroke: isAdoptive ? '#f59e0b' : '#6b7280',
-            strokeWidth: 2,
-            strokeDasharray: isAdoptive ? '5,5' : '0',
+          data: {
+            kind: 'singleParentChild',
+            offset: 36,
           },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: isAdoptive ? '#f59e0b' : '#6b7280',
+          style: {
+            stroke: FAMILY_TREE_COLORS.EDGE_CHILD,
+            strokeWidth: 2,
           },
           label: isAdoptive ? 'Adotivo' : '',
           labelStyle: { fill: '#6b7280', fontWeight: 600, fontSize: 12 },
@@ -370,13 +412,13 @@ export function buildTreeGraph({
       edges.push({
         id: `edge-conjugal-childless-1-${edgeIdCounter++}`,
         source: parent1Id,
-        sourceHandle: 'bottom',
+        sourceHandle: 'spouse-right',
         target: marriageNodeId,
-        targetHandle: 'top',
-        type: 'straight',
+        targetHandle: 'left',
+        type: 'spouseEdge',
         animated: false,
         style: {
-          stroke: '#10b981',
+          stroke: FAMILY_TREE_COLORS.EDGE_SPOUSE,
           strokeWidth: 3,
         },
       });
@@ -384,13 +426,13 @@ export function buildTreeGraph({
       edges.push({
         id: `edge-conjugal-childless-2-${edgeIdCounter++}`,
         source: marriageNodeId,
-        sourceHandle: 'bottom',
+        sourceHandle: 'right',
         target: parent2Id,
-        targetHandle: 'top',
-        type: 'straight',
+        targetHandle: 'spouse-left',
+        type: 'spouseEdge',
         animated: false,
         style: {
-          stroke: '#10b981',
+          stroke: FAMILY_TREE_COLORS.EDGE_SPOUSE,
           strokeWidth: 3,
         },
       });

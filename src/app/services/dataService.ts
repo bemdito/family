@@ -18,6 +18,7 @@ const PESSOA_COLUMNS = [
   'local_atual',
   'foto_principal_url',
   'humano_ou_pet',
+  'lado',
   'cor_bg_card',
   'minibio',
   'curiosidades',
@@ -29,6 +30,7 @@ const PESSOA_COLUMNS = [
   'permitir_exibir_instagram',
   'permitir_mensagens_whatsapp',
   'geracao_sociologica',
+  'manual_generation',
 ] as const;
 
 const RELACIONAMENTO_COLUMNS = [
@@ -98,6 +100,17 @@ function pickDefined<T extends readonly string[]>(source: Record<string, any>, k
   }, {});
 }
 
+function normalizeManualGeneration(value: unknown) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const generation = Number(value);
+  return Number.isInteger(generation) && generation >= 1 && generation <= 7
+    ? generation
+    : null;
+}
+
 // =====================================================
 // PESSOAS - CRUD
 // =====================================================
@@ -159,6 +172,26 @@ export async function atualizarPessoa(id: string, pessoa: Partial<Pessoa>): Prom
   if (error) {
     logSupabaseError(`Erro ao atualizar pessoa ${id}`, error);
     return undefined;
+  }
+
+  return data ? toPessoa(data) : undefined;
+}
+
+export async function atualizarGeracaoManualPessoa(id: string, generation: number): Promise<Pessoa | undefined> {
+  if (!Number.isInteger(generation) || generation < 1 || generation > 7) {
+    throw new Error('Geração manual inválida. Use um valor entre 1 e 7.');
+  }
+
+  const { data, error } = await supabase
+    .from('pessoas')
+    .update({ manual_generation: generation })
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) {
+    logSupabaseError(`Erro ao atualizar geração manual da pessoa ${id}`, error);
+    throw new Error(error.message || 'Erro ao atualizar geração manual.');
   }
 
   return data ? toPessoa(data) : undefined;
@@ -422,6 +455,8 @@ export async function importarDadosFamilia(dados: any[]) {
           data_falecimento: registro['Data de falecimento']?.toString() || registro.data_falecimento?.toString() || '',
           local_falecimento: registro['Local de Falecimento'] || registro.local_falecimento || '',
           humano_ou_pet: registro['Humano ou pet'] || registro.humano_ou_pet || 'Humano',
+          lado: registro.lado || 'esquerda',
+          manual_generation: normalizeManualGeneration(registro.manual_generation),
           local_atual: registro.local_atual || '',
           foto_principal_url: registro.foto_principal_url || '',
           cor_bg_card: registro.cor_bg_card || '',

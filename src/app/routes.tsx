@@ -6,6 +6,7 @@ import { MeusFavoritos } from './pages/MeusFavoritos';
 import { CentralNotificacoes } from './pages/CentralNotificacoes';
 import { Entrar } from './pages/Entrar';
 import { MinhaArvore } from './pages/MinhaArvore';
+import { MeusDados } from './pages/MeusDados';
 import { VincularPerfil } from './pages/VincularPerfil';
 import { AdminLogin } from './pages/admin/AdminLogin';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -17,11 +18,12 @@ import { AdminMigrarDados } from './pages/admin/AdminMigrarDados';
 import { AdminDiagnostico } from './pages/admin/AdminDiagnostico';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { MemberRoute } from './components/MemberRoute';
+import { TreeAccessRoute } from './components/TreeAccessRoute';
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Home />,
+    element: <TreeAccessRoute><Home /></TreeAccessRoute>,
   },
   {
     path: '/entrar',
@@ -30,6 +32,10 @@ export const router = createBrowserRouter([
   {
     path: '/minha-arvore',
     element: <MemberRoute><MinhaArvore /></MemberRoute>,
+  },
+  {
+    path: '/meus-dados',
+    element: <MemberRoute><MeusDados /></MemberRoute>,
   },
   {
     path: '/vincular-perfil',

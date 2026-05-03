@@ -12,6 +12,8 @@ export interface GenerationColumnMeta {
   level: number;
   label: string;
   x: number;
+  period?: string;
+  description?: string;
 }
 
 export interface MarriageNodeDetails {
@@ -153,6 +155,18 @@ export function getSortableBirthValue(value?: string | number | null): number {
 
   const text = String(value).trim();
   if (!text) return Number.POSITIVE_INFINITY;
+
+  const brDate = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (brDate) {
+    const [, day, month, year] = brDate;
+    return Number(`${year}${month.padStart(2, '0')}${day.padStart(2, '0')}`);
+  }
+
+  const isoDate = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoDate) {
+    const [, year, month, day] = isoDate;
+    return Number(`${year}${month.padStart(2, '0')}${day.padStart(2, '0')}`);
+  }
 
   const fullDate = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (fullDate) {

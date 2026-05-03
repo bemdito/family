@@ -49,6 +49,7 @@ export function AdminPessoaForm() {
     foto_principal_url: '',
     humano_ou_pet: 'Humano' as TipoEntidade,
     lado: 'esquerda' as LadoPessoa,
+    manual_generation: '',
     cor_bg_card: '',
     minibio: '',
     curiosidades: '',
@@ -87,6 +88,7 @@ export function AdminPessoaForm() {
               foto_principal_url: pessoa.foto_principal_url || '',
               humano_ou_pet: pessoa.humano_ou_pet || ('Humano' as TipoEntidade),
               lado: (pessoa.lado as LadoPessoa) || 'esquerda',
+              manual_generation: pessoa.manual_generation?.toString() || '',
               cor_bg_card: pessoa.cor_bg_card || '',
               minibio: pessoa.minibio || '',
               curiosidades: pessoa.curiosidades || '',
@@ -143,6 +145,7 @@ export function AdminPessoaForm() {
         data_nascimento: formData.data_nascimento || undefined,
         data_falecimento: formData.data_falecimento || undefined,
         lado: formData.lado || 'esquerda',
+        manual_generation: formData.manual_generation ? Number(formData.manual_generation) : null,
         arquivos_historicos: formData.arquivos_historicos || [],
       };
 
@@ -378,6 +381,22 @@ export function AdminPessoaForm() {
                   <p className="mt-1 text-xs text-gray-500">
                     Este campo permanece ativo para o modo legado. A nova visualização por gerações não depende dele.
                   </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Geração</label>
+                  <select
+                    value={formData.manual_generation}
+                    onChange={(e) => handleChange('manual_generation', e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="">Automática</option>
+                    {Array.from({ length: 7 }, (_, index) => index + 1).map((generation) => (
+                      <option key={generation} value={generation}>
+                        Geração {generation}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>

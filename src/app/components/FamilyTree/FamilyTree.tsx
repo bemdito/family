@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import ReactFlow, {
   EdgeTypes,
   Controls,
@@ -8,6 +8,7 @@ import ReactFlow, {
   useEdgesState,
   ReactFlowInstance,
   Node,
+  NodeDragHandler,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -17,6 +18,7 @@ import { OrthogonalChildEdge } from './OrthogonalChildEdge';
 import { buildTreeGraph } from './buildTreeGraph';
 import { legacySideLayout } from './layouts/legacySideLayout';
 import { generationColumnsLayout } from './layouts/generationColumnsLayout';
+import { chronologicalListLayout } from './layouts/chronologicalListLayout';
 import {
   DEFAULT_EDGE_FILTERS,
   EdgeFilters,
@@ -25,6 +27,7 @@ import {
   MarriageNodeDetails,
   GenerationColumnMeta,
 } from './types';
+import { FAMILY_TREE_COLORS, hasDeathDate } from './visualTokens';
 
 interface FamilyTreeProps {
   pessoas: Pessoa[];
@@ -41,16 +44,24 @@ interface FamilyTreeProps {
   activeGeneration?: number;
   isMobile?: boolean;
   onGenerationColumnsChange?: (columns: GenerationColumnMeta[]) => void;
+  onPersonGenerationChange?: (personId: string, generation: number) => Promise<void> | void;
 }
 
 const edgeTypes: EdgeTypes = {
   orthogonalChild: OrthogonalChildEdge,
+  childEdge: OrthogonalChildEdge,
+  siblingEdge: OrthogonalChildEdge,
+  spouseEdge: OrthogonalChildEdge,
 };
 
 function getLayoutByViewMode(
   viewMode: TipoVisualizacaoArvore,
   graph: ReturnType<typeof buildTreeGraph>
 ) {
+  if (viewMode === 'lista') {
+    return chronologicalListLayout(graph);
+  }
+
   if (viewMode === 'geracoes') {
     return generationColumnsLayout(graph);
   }
@@ -60,6 +71,32 @@ function getLayoutByViewMode(
 
 const MARRIAGE_NODE_SIZE = TREE_CONSTANTS.MARRIAGE_NODE_WIDTH;
 const INITIAL_MOBILE_CENTER_Y = TREE_CONSTANTS.INITIAL_Y + TREE_CONSTANTS.NODE_HEIGHT;
+const MIN_MANUAL_GENERATION = 1;
+const MAX_MANUAL_GENERATION = 7;
+
+function clampManualGeneration(generation: number) {
+  return Math.min(MAX_MANUAL_GENERATION, Math.max(MIN_MANUAL_GENERATION, generation));
+}
+
+function getGenerationFromNodeX(nodeX: number, columns: GenerationColumnMeta[]) {
+  const sortedColumns = [...columns].sort((a, b) => a.level - b.level);
+  const firstColumn = sortedColumns[0];
+
+  if (!firstColumn) {
+    return MIN_MANUAL_GENERATION;
+  }
+
+  const columnGap =
+    sortedColumns.length > 1
+      ? sortedColumns[1].x - sortedColumns[0].x
+      : TREE_CONSTANTS.HORIZONTAL_GAP_BETWEEN_GENERATIONS;
+
+  const nodeCenterX = nodeX + TREE_CONSTANTS.NODE_WIDTH / 2;
+  const firstColumnCenterX = firstColumn.x + TREE_CONSTANTS.NODE_WIDTH / 2;
+  const detectedLevel = Math.round((nodeCenterX - firstColumnCenterX) / columnGap + firstColumn.level);
+
+  return clampManualGeneration(detectedLevel + 1);
+}
 
 export function FamilyTree({
   pessoas,
@@ -76,8 +113,10 @@ export function FamilyTree({
   activeGeneration,
   isMobile = false,
   onGenerationColumnsChange,
+  onPersonGenerationChange,
 }: FamilyTreeProps) {
   const reactFlowRef = useRef<ReactFlowInstance | null>(null);
+  const [dragTargetGeneration, setDragTargetGeneration] = useState<number | null>(null);
   const { NODE_WIDTH, NODE_HEIGHT } = TREE_CONSTANTS;
 
   const dataHash = useMemo(() => {
@@ -136,6 +175,26 @@ export function FamilyTree({
   useEffect(() => {
     onGenerationColumnsChange?.(generationColumns);
   }, [generationColumns, onGenerationColumnsChange]);
+
+  useEffect(() => {
+    setNodes((prevNodes) =>
+      prevNodes.map((node) => {
+        if (node.type !== 'generationHeaderNode') {
+          return node;
+        }
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            isDragTarget:
+              typeof node.data?.generation === 'number' &&
+              dragTargetGeneration === node.data.generation + 1,
+          },
+        };
+      })
+    );
+  }, [dragTargetGeneration, setNodes]);
 
   useEffect(() => {
     setNodes((prevNodes) =>
@@ -234,6 +293,42 @@ export function FamilyTree({
     [onPersonClick]
   );
 
+  const handleNodeDrag = useCallback<NodeDragHandler>(
+    (_event, node) => {
+      if (viewMode === 'lista' || node.type !== 'personNode' || generationColumns.length === 0) {
+        if (dragTargetGeneration !== null) {
+          setDragTargetGeneration(null);
+        }
+        return;
+      }
+
+      const nextGeneration = getGenerationFromNodeX(node.position.x, generationColumns);
+      setDragTargetGeneration((currentGeneration) =>
+        currentGeneration === nextGeneration ? currentGeneration : nextGeneration
+      );
+    },
+    [dragTargetGeneration, generationColumns, viewMode]
+  );
+
+  const handleNodeDragStop = useCallback<NodeDragHandler>(
+    async (_event, node) => {
+      if (
+        viewMode === 'lista' ||
+        node.type !== 'personNode' ||
+        !node.data?.pessoa ||
+        generationColumns.length === 0
+      ) {
+        setDragTargetGeneration(null);
+        return;
+      }
+
+      const nextGeneration = getGenerationFromNodeX(node.position.x, generationColumns);
+      setDragTargetGeneration(null);
+      await onPersonGenerationChange?.(node.data.pessoa.id, nextGeneration);
+    },
+    [generationColumns, onPersonGenerationChange, viewMode]
+  );
+
   const handleInit = useCallback(
     (instance: ReactFlowInstance) => {
       reactFlowRef.current = instance;
@@ -257,6 +352,8 @@ export function FamilyTree({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onNodeDrag={handleNodeDrag}
+        onNodeDragStop={handleNodeDragStop}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         minZoom={isMobile ? 0.5 : 0.1}
@@ -271,10 +368,10 @@ export function FamilyTree({
             nodeColor={(node) => {
               const pessoa = node.data?.pessoa;
               if (pessoa?.id && pessoa.id === selectedPersonId) return '#1d4ed8';
-              if (pessoa?.humano_ou_pet === 'Pet') return '#eab308';
-              if (pessoa?.data_falecimento) return '#a855f7';
-              if (node.type === 'marriageNode') return '#10b981';
-              return '#3b82f6';
+              if (pessoa?.humano_ou_pet === 'Pet') return FAMILY_TREE_COLORS.CARD_BORDER_PET;
+              if (hasDeathDate(pessoa?.data_falecimento)) return FAMILY_TREE_COLORS.CARD_BORDER_DECEASED;
+              if (node.type === 'marriageNode') return FAMILY_TREE_COLORS.EDGE_SPOUSE;
+              return FAMILY_TREE_COLORS.CARD_BORDER_ALIVE;
             }}
             maskColor="rgb(240, 240, 240, 0.6)"
           />

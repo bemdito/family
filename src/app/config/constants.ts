@@ -2,7 +2,7 @@
 
 export const APP_CONFIG = {
   name: 'Árvore Genealógica',
-  familyName: 'Família Limeira Souza',
+  familyName: 'Família Barros Souza',
   version: '1.0.0',
   
   // Autenticação mock

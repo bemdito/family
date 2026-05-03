@@ -20,6 +20,14 @@ import {
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
+import {
+  atualizarGeracaoManualPessoa,
   obterTodasPessoas,
   obterTodosRelacionamentos,
   buscarPessoas,
@@ -29,20 +37,16 @@ import {
   GenerationColumnMeta,
   MarriageNodeDetails,
 } from '../components/FamilyTree/types';
+import { FAMILY_TREE_COLORS, hasDeathDate } from '../components/FamilyTree/visualTokens';
 import { useAuth } from '../contexts/AuthContext';
-import { getPrimaryLinkedPerson } from '../services/memberProfileService';
+import { getMemberProfile, getPrimaryLinkedPerson, MemberProfile } from '../services/memberProfileService';
 import {
   Search,
-  Users,
-  Home as HomeIcon,
   Settings,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
   ChevronUp,
-  MapPin,
-  Heart,
-  Activity,
   Monitor,
   CalendarDays,
   Star,
@@ -50,16 +54,20 @@ import {
   UserCircle2,
   Focus,
   LogIn,
+  LogOut,
+  Pencil,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function Home() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState<string | undefined>();
   const [linkedPersonId, setLinkedPersonId] = useState<string | undefined>();
+  const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [relacionamentos, setRelacionamentos] = useState<Relacionamento[]>([]);
   const [pessoasFiltradas, setPessoasFiltradas] = useState<Pessoa[]>([]);
@@ -111,7 +119,7 @@ export function Home() {
   }, []);
 
   useEffect(() => {
-    if (isMobile && viewMode !== 'geracoes') {
+    if (isMobile && viewMode === 'lados') {
       setViewMode('geracoes');
       return;
     }
@@ -196,6 +204,28 @@ export function Home() {
     };
 
     loadLinkedPerson();
+  }, [user]);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) {
+        setProfile(null);
+        return;
+      }
+
+      try {
+        const { data, error } = await getMemberProfile(user.id);
+        if (error) {
+          console.error('Erro ao carregar perfil do usuário:', error);
+        }
+        setProfile(data);
+      } catch (error) {
+        console.error('Erro ao carregar perfil do usuário:', error);
+        setProfile(null);
+      }
+    };
+
+    loadProfile();
   }, [user]);
 
   useEffect(() => {
@@ -291,6 +321,43 @@ export function Home() {
     setConnectionTarget(null);
   }, []);
 
+  const handlePersonGenerationChange = useCallback(async (personId: string, generation: number) => {
+    const nextGeneration = Math.min(7, Math.max(1, generation));
+    const previousPessoa = pessoas.find((pessoa) => pessoa.id === personId);
+
+    if (!previousPessoa) {
+      return;
+    }
+
+    setPessoas((prevPessoas) =>
+      prevPessoas.map((pessoa) =>
+        pessoa.id === personId
+          ? { ...pessoa, manual_generation: nextGeneration }
+          : pessoa
+      )
+    );
+
+    try {
+      await atualizarGeracaoManualPessoa(personId, nextGeneration);
+      toast.success(`Geração atualizada para Geração ${nextGeneration}.`);
+    } catch (error) {
+      setPessoas((prevPessoas) =>
+        prevPessoas.map((pessoa) =>
+          pessoa.id === personId
+            ? previousPessoa
+            : pessoa
+        )
+      );
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar geração manual.');
+    }
+  }, [pessoas]);
+
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+    toast.success('Sessão encerrada.');
+    navigate('/');
+  }, [navigate, signOut]);
+
   const toggleFilter = useCallback((filterKey: keyof typeof edgeFilters) => {
     setEdgeFilters((prev) => ({
       ...prev,
@@ -311,7 +378,7 @@ export function Home() {
         return personFilters.pets;
       }
 
-      if (pessoa.data_falecimento) {
+      if (hasDeathDate(pessoa.data_falecimento)) {
         return personFilters.falecidos;
       }
 
@@ -320,8 +387,8 @@ export function Home() {
   }, [pessoas, personFilters]);
 
   const stats = useMemo(() => {
-    const pessoasVivas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && !p.data_falecimento);
-    const pessoasFalecidas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && p.data_falecimento);
+    const pessoasVivas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && !hasDeathDate(p.data_falecimento));
+    const pessoasFalecidas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && hasDeathDate(p.data_falecimento));
     const pets = pessoas.filter((p) => p.humano_ou_pet === 'Pet');
 
     const pessoasComConjuge = new Set<string>();
@@ -363,7 +430,7 @@ export function Home() {
   }, [pessoas, relacionamentos]);
 
   const availableModes = useMemo<TipoVisualizacaoArvore[]>(
-    () => (isMobile ? ['geracoes'] : ['lados', 'geracoes']),
+    () => (isMobile ? ['geracoes', 'lista'] : ['lados', 'geracoes', 'lista']),
     [isMobile]
   );
 
@@ -371,18 +438,37 @@ export function Home() {
   const activeGenerationMeta = generationColumns.find((column) => column.level === activeGeneration);
   const maxGenerationIndex = generationColumns.length - 1;
 
+  const displayName = (
+    profile?.nome_exibicao ||
+    (user?.user_metadata?.nome_exibicao as string | undefined) ||
+    (user?.user_metadata?.name as string | undefined) ||
+    user?.email ||
+    ''
+  ).trim();
+  const avatarUrl =
+    profile?.avatar_url ||
+    (user?.user_metadata?.avatar_url as string | undefined) ||
+    null;
+  const initials = getInitials(displayName);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-4 lg:px-6 py-4 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-white" />
-            </div>
+            <UserMenu
+              isLoggedIn={Boolean(user)}
+              displayName={displayName}
+              avatarUrl={avatarUrl}
+              initials={initials}
+              onLogin={() => navigate('/entrar')}
+              onEditProfile={() => navigate('/minha-arvore')}
+              onSignOut={handleSignOut}
+            />
 
             <div>
               <h1 className="font-bold text-xl text-gray-900">Árvore Genealógica</h1>
-              <p className="text-sm text-gray-500">Família Limeira Souza</p>
+              <p className="text-sm text-gray-500">Família Barros Souza</p>
             </div>
           </div>
 
@@ -393,20 +479,6 @@ export function Home() {
                 onChange={handleViewModeChange}
                 availableModes={availableModes}
               />
-
-              {user ? (
-                <Link to="/minha-arvore">
-                  <Button variant="outline" size="icon" title="Minha área">
-                    <UserCircle2 className="w-4 h-4" />
-                  </Button>
-                </Link>
-              ) : (
-                <Link to="/entrar">
-                  <Button variant="outline" size="icon" title="Entrar">
-                    <LogIn className="w-4 h-4" />
-                  </Button>
-                </Link>
-              )}
 
               {user && linkedPersonId && (
                 <Button
@@ -431,16 +503,6 @@ export function Home() {
                 </Button>
               </Link>
 
-              <Link to="/notificacoes">
-                <Button variant="outline" size="icon" title="Notificações">
-                  <Bell className="w-4 h-4" />
-                </Button>
-              </Link>
-
-              <Button variant="outline" size="icon" onClick={() => navigate('/')} title="Voltar para a árvore">
-                <HomeIcon className="w-4 h-4" />
-              </Button>
-
               <Button
                 variant="outline"
                 size="icon"
@@ -460,45 +522,42 @@ export function Home() {
                   {legendOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                 </Button>
               )}
-
-              {!isMobile && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setSidebarOpen((prev) => !prev)}
-                  title={sidebarOpen ? 'Ocultar painel lateral' : 'Exibir painel lateral'}
-                >
-                  {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                </Button>
-              )}
             </div>
 
-            <div className="relative w-full lg:w-80 max-w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                type="text"
-                placeholder="Buscar por nome ou local..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+            <div className="flex w-full max-w-full items-center gap-2 lg:w-auto">
+              <div className="relative min-w-0 flex-1 lg:w-80 lg:flex-none">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Buscar por nome ou local..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
 
-              {searchTerm && pessoasFiltradas.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
-                  {pessoasFiltradas.map((pessoa) => (
-                    <button
-                      key={pessoa.id}
-                      onClick={() => handleSearchSelect(pessoa)}
-                      className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
-                    >
-                      <p className="font-medium text-sm text-gray-900">{pessoa.nome_completo}</p>
-                      {pessoa.local_nascimento && (
-                        <p className="text-xs text-gray-500 mt-1">📍 {pessoa.local_nascimento}</p>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
+                {searchTerm && pessoasFiltradas.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
+                    {pessoasFiltradas.map((pessoa) => (
+                      <button
+                        key={pessoa.id}
+                        onClick={() => handleSearchSelect(pessoa)}
+                        className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                      >
+                        <p className="font-medium text-sm text-gray-900">{pessoa.nome_completo}</p>
+                        {pessoa.local_nascimento && (
+                          <p className="text-xs text-gray-500 mt-1">📍 {pessoa.local_nascimento}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <Link to="/notificacoes" className="shrink-0">
+                <Button variant="outline" size="icon" title="Notificações">
+                  <Bell className="w-4 h-4" />
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
@@ -539,27 +598,32 @@ export function Home() {
 
       {isMobile && legendOpen && (
         <section className="border-b border-gray-200 bg-white px-4 py-3">
-          <div className="flex flex-wrap gap-2 text-xs text-gray-600">
-            <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-blue-700">
-              <Activity className="h-3 w-3" />
-              Vivos
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-1 text-purple-700">
-              <Heart className="h-3 w-3" />
-              Memórias
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-amber-700">
-              <MapPin className="h-3 w-3" />
-              Locais
-            </span>
-          </div>
+          <FamilyTreeLegend compact />
         </section>
       )}
 
       <main className="flex min-h-0 flex-1">
-        {!isMobile && sidebarOpen && (
-          <aside className="w-80 shrink-0 overflow-y-auto border-r border-gray-200 bg-white p-4">
-            {!desktopNoticeDismissed && (
+        {!isMobile && (
+          <aside
+            className={[
+              'shrink-0 overflow-y-auto border-r border-gray-200 bg-white transition-[width] duration-200',
+              sidebarOpen ? 'w-80 p-4' : 'w-14 p-2',
+            ].join(' ')}
+          >
+            <div className={sidebarOpen ? 'mb-4 flex items-center justify-between gap-3' : 'flex justify-center'}>
+              {sidebarOpen && <span aria-hidden="true" />}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setSidebarOpen((prev) => !prev)}
+                title={sidebarOpen ? 'Ocultar painel lateral' : 'Exibir painel lateral'}
+                aria-label={sidebarOpen ? 'Ocultar painel lateral' : 'Exibir painel lateral'}
+              >
+                {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </Button>
+            </div>
+
+            {sidebarOpen && !desktopNoticeDismissed && (
               <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -579,66 +643,70 @@ export function Home() {
               </div>
             )}
 
-            <div className="space-y-4">
-              <section>
-                <h2 className="mb-3 text-sm font-semibold text-gray-900">Resumo</h2>
-                <div className="grid grid-cols-2 gap-2">
-                  <Stat label="Pessoas" value={stats.totalPessoas} />
-                  <Stat label="Vivos" value={stats.pessoasVivas} />
-                  <Stat label="Falecidos" value={stats.pessoasFalecidas} />
-                  <Stat label="Pets" value={stats.pets} />
-                  <Stat label="Cônjuges" value={stats.casados} />
-                  <Stat label="Cidades" value={stats.cidadesAtuais} />
-                </div>
-              </section>
-
-              <section>
-                <h2 className="mb-3 text-sm font-semibold text-gray-900">Pessoas</h2>
-                <div className="space-y-2">
-                  <FilterButton active={personFilters.vivos} onClick={() => togglePersonFilter('vivos')}>
-                    Vivos
-                  </FilterButton>
-                  <FilterButton active={personFilters.falecidos} onClick={() => togglePersonFilter('falecidos')}>
-                    Falecidos
-                  </FilterButton>
-                  <FilterButton active={personFilters.pets} onClick={() => togglePersonFilter('pets')}>
-                    Pets
-                  </FilterButton>
-                </div>
-              </section>
-
-              <section>
-                <h2 className="mb-3 text-sm font-semibold text-gray-900">Relações</h2>
-                <div className="space-y-2">
-                  <FilterButton active={edgeFilters.conjugal} onClick={() => toggleFilter('conjugal')}>
-                    Cônjuges
-                  </FilterButton>
-                  <FilterButton active={edgeFilters.filiacao_sangue} onClick={() => toggleFilter('filiacao_sangue')}>
-                    Filiação de sangue
-                  </FilterButton>
-                  <FilterButton active={edgeFilters.filiacao_adotiva} onClick={() => toggleFilter('filiacao_adotiva')}>
-                    Filiação adotiva
-                  </FilterButton>
-                  <FilterButton active={edgeFilters.irmaos} onClick={() => toggleFilter('irmaos')}>
-                    Irmãos
-                  </FilterButton>
-                </div>
-              </section>
-
-              {stats.cidadesNascimento.length > 0 && (
+            {sidebarOpen && (
+              <div className="space-y-4">
                 <section>
-                  <h2 className="mb-3 text-sm font-semibold text-gray-900">Locais frequentes</h2>
-                  <div className="space-y-2">
-                    {stats.cidadesNascimento.map(([cidade, total]) => (
-                      <div key={cidade} className="flex items-center justify-between gap-3 text-sm">
-                        <span className="truncate text-gray-600">{cidade}</span>
-                        <span className="font-semibold text-gray-900">{total}</span>
-                      </div>
-                    ))}
+                  <h2 className="mb-3 text-sm font-semibold text-gray-900">Resumo</h2>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Stat label="Pessoas" value={stats.totalPessoas} />
+                    <Stat label="Vivos" value={stats.pessoasVivas} />
+                    <Stat label="Falecidos" value={stats.pessoasFalecidas} />
+                    <Stat label="Pets" value={stats.pets} />
+                    <Stat label="Cônjuges" value={stats.casados} />
+                    <Stat label="Cidades" value={stats.cidadesAtuais} />
                   </div>
                 </section>
-              )}
-            </div>
+
+                <section>
+                  <h2 className="mb-3 text-sm font-semibold text-gray-900">Pessoas</h2>
+                  <div className="space-y-2">
+                    <FilterButton active={personFilters.vivos} onClick={() => togglePersonFilter('vivos')}>
+                      Vivos
+                    </FilterButton>
+                    <FilterButton active={personFilters.falecidos} onClick={() => togglePersonFilter('falecidos')}>
+                      Falecidos
+                    </FilterButton>
+                    <FilterButton active={personFilters.pets} onClick={() => togglePersonFilter('pets')}>
+                      Pets
+                    </FilterButton>
+                  </div>
+                </section>
+
+                <section>
+                  <h2 className="mb-3 text-sm font-semibold text-gray-900">Relações</h2>
+                  <div className="space-y-2">
+                    <FilterButton active={edgeFilters.conjugal} onClick={() => toggleFilter('conjugal')}>
+                      Cônjuges
+                    </FilterButton>
+                    <FilterButton active={edgeFilters.filiacao_sangue} onClick={() => toggleFilter('filiacao_sangue')}>
+                      Filiação de sangue
+                    </FilterButton>
+                    <FilterButton active={edgeFilters.filiacao_adotiva} onClick={() => toggleFilter('filiacao_adotiva')}>
+                      Filiação adotiva
+                    </FilterButton>
+                    <FilterButton active={edgeFilters.irmaos} onClick={() => toggleFilter('irmaos')}>
+                      Irmãos
+                    </FilterButton>
+                  </div>
+                </section>
+
+                <FamilyTreeLegend />
+
+                {stats.cidadesNascimento.length > 0 && (
+                  <section>
+                    <h2 className="mb-3 text-sm font-semibold text-gray-900">Cidades de residência atual</h2>
+                    <div className="space-y-2">
+                      {stats.cidadesNascimento.map(([cidade, total]) => (
+                        <div key={cidade} className="flex items-center justify-between gap-3 text-sm">
+                          <span className="truncate text-gray-600">{cidade}</span>
+                          <span className="font-semibold text-gray-900">{total}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+            )}
           </aside>
         )}
 
@@ -675,6 +743,7 @@ export function Home() {
               activeGeneration={activeGeneration}
               isMobile={isMobile}
               onGenerationColumnsChange={setGenerationColumns}
+              onPersonGenerationChange={handlePersonGenerationChange}
             />
           )}
         </section>
@@ -694,6 +763,84 @@ export function Home() {
         onSubmit={handleAddConnectionSubmit}
       />
     </div>
+  );
+}
+
+function getInitials(displayName: string) {
+  const cleanName = displayName.trim();
+  if (!cleanName) return '';
+
+  const parts = cleanName.includes('@')
+    ? cleanName.split('@')[0].split(/[._\-\s]+/)
+    : cleanName.split(/\s+/);
+
+  return parts
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
+function UserMenu({
+  isLoggedIn,
+  displayName,
+  avatarUrl,
+  initials,
+  onLogin,
+  onEditProfile,
+  onSignOut,
+}: {
+  isLoggedIn: boolean;
+  displayName: string;
+  avatarUrl: string | null;
+  initials: string;
+  onLogin: () => void;
+  onEditProfile: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 text-sm font-semibold text-white shadow-sm transition hover:from-blue-700 hover:to-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          title={isLoggedIn ? displayName || 'Conta do usuário' : 'Login'}
+          aria-label={isLoggedIn ? displayName || 'Conta do usuário' : 'Login'}
+        >
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={displayName || 'Usuário'}
+              className="h-full w-full object-cover"
+            />
+          ) : initials ? (
+            <span>{initials}</span>
+          ) : (
+            <UserCircle2 className="h-6 w-6" />
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        {!isLoggedIn ? (
+          <DropdownMenuItem onClick={onLogin}>
+            <LogIn className="h-4 w-4" />
+            Login
+          </DropdownMenuItem>
+        ) : (
+          <>
+            <DropdownMenuItem onClick={onEditProfile}>
+              <Pencil className="h-4 w-4" />
+              Editar Perfil
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onSignOut} variant="destructive">
+              <LogOut className="h-4 w-4" />
+              Sair
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -729,6 +876,67 @@ function FilterButton({
       <span>{children}</span>
       <span className={active ? 'text-blue-700' : 'text-gray-400'}>{active ? 'Ativo' : 'Oculto'}</span>
     </button>
+  );
+}
+
+function FamilyTreeLegend({ compact = false }: { compact?: boolean }) {
+  const items = [
+    {
+      label: 'Pessoas vivas',
+      sample: (
+        <span
+          className="h-5 w-9 rounded-md border-2 bg-white"
+          style={{ borderColor: FAMILY_TREE_COLORS.CARD_BORDER_ALIVE }}
+        />
+      ),
+    },
+    {
+      label: 'Pessoas falecidas',
+      sample: (
+        <span
+          className="h-5 w-9 rounded-md border-2 bg-white"
+          style={{ borderColor: FAMILY_TREE_COLORS.CARD_BORDER_DECEASED }}
+        />
+      ),
+    },
+    {
+      label: 'Relacionamento conjugal',
+      sample: <LegendLine color={FAMILY_TREE_COLORS.EDGE_SPOUSE} />,
+    },
+    {
+      label: 'Filhos do relacionamento',
+      sample: <LegendLine color={FAMILY_TREE_COLORS.EDGE_CHILD} />,
+    },
+    {
+      label: 'Relação de irmãos',
+      sample: <LegendLine color={FAMILY_TREE_COLORS.EDGE_SIBLING} dashed />,
+    },
+  ];
+
+  return (
+    <section className={compact ? '' : 'rounded-lg border border-gray-200 bg-gray-50 p-3'}>
+      <h2 className="mb-3 text-sm font-semibold text-gray-900">Legenda</h2>
+      <div className={compact ? 'grid grid-cols-1 gap-2 sm:grid-cols-2' : 'space-y-2'}>
+        {items.map((item) => (
+          <div key={item.label} className="flex items-center gap-3 text-xs text-gray-600">
+            <span className="flex w-12 shrink-0 items-center justify-center">{item.sample}</span>
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LegendLine({ color, dashed = false }: { color: string; dashed?: boolean }) {
+  return (
+    <span
+      className="block h-0 w-10 border-t-2"
+      style={{
+        borderColor: color,
+        borderStyle: dashed ? 'dashed' : 'solid',
+      }}
+    />
   );
 }
 

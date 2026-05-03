@@ -8,7 +8,7 @@ export type SubtipoRelacionamento = 'sangue' | 'adotivo' | 'uniao' | 'casamento'
 
 export type LadoPessoa = 'esquerda' | 'direita';
 
-export type TipoVisualizacaoArvore = 'lados' | 'geracoes';
+export type TipoVisualizacaoArvore = 'lados' | 'geracoes' | 'lista';
 
 export type GeracaoSociologica =
   | 'Geração Silenciosa'
@@ -60,6 +60,7 @@ export interface Pessoa {
   permitir_exibir_instagram?: boolean;
   permitir_mensagens_whatsapp?: boolean;
   geracao_sociologica?: GeracaoSociologica;
+  manual_generation?: number | null;
   arquivos_historicos?: ArquivoHistorico[];
   created_at?: string;
   updated_at?: string;
