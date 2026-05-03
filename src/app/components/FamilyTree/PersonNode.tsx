@@ -34,7 +34,7 @@ function ActionButton({
 }
 
 export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
-  const { pessoa, onClick, isSelected, onView, onEdit, onAddConnection, onRemove } = data;
+  const { pessoa, onClick, isSelected, isCentralPerson, onView, onEdit, onAddConnection, onRemove } = data;
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -154,9 +154,16 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
           </div>
 
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-sm font-semibold leading-tight" title={pessoa.nome_completo}>
-              {pessoa.nome_completo}
-            </h3>
+            <div className="flex items-start gap-2">
+              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight" title={pessoa.nome_completo}>
+                {pessoa.nome_completo}
+              </h3>
+              {isCentralPerson && (
+                <span className="shrink-0 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-normal text-white">
+                  Você
+                </span>
+              )}
+            </div>
 
             {pessoa.data_nascimento && (
               <p className="mt-1 text-xs text-gray-600">

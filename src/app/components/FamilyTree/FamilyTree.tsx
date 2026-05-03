@@ -19,8 +19,11 @@ import { buildTreeGraph } from './buildTreeGraph';
 import { legacySideLayout } from './layouts/legacySideLayout';
 import { generationColumnsLayout } from './layouts/generationColumnsLayout';
 import { chronologicalListLayout } from './layouts/chronologicalListLayout';
+import { directFamilyLayout } from './layouts/directFamilyLayout';
 import {
   DEFAULT_EDGE_FILTERS,
+  DEFAULT_DIRECT_RELATIVE_FILTERS,
+  DirectRelativeFilters,
   EdgeFilters,
   TREE_CONSTANTS,
   getDefaultViewMode,
@@ -40,6 +43,8 @@ interface FamilyTreeProps {
   onMarriageClick?: (details: MarriageNodeDetails) => void;
   selectedPersonId?: string;
   edgeFilters?: EdgeFilters;
+  directRelativeFilters?: DirectRelativeFilters;
+  centralPersonId?: string;
   viewMode?: TipoVisualizacaoArvore;
   activeGeneration?: number;
   isMobile?: boolean;
@@ -56,8 +61,19 @@ const edgeTypes: EdgeTypes = {
 
 function getLayoutByViewMode(
   viewMode: TipoVisualizacaoArvore,
-  graph: ReturnType<typeof buildTreeGraph>
+  graph: ReturnType<typeof buildTreeGraph>,
+  options?: {
+    centralPersonId?: string;
+    directRelativeFilters?: DirectRelativeFilters;
+  }
 ) {
+  if (viewMode === 'familiares-diretos') {
+    return directFamilyLayout(graph, {
+      centralPersonId: options?.centralPersonId,
+      filters: options?.directRelativeFilters,
+    });
+  }
+
   if (viewMode === 'lista') {
     return chronologicalListLayout(graph);
   }
@@ -109,6 +125,8 @@ export function FamilyTree({
   onMarriageClick,
   selectedPersonId,
   edgeFilters = DEFAULT_EDGE_FILTERS,
+  directRelativeFilters = DEFAULT_DIRECT_RELATIVE_FILTERS,
+  centralPersonId,
   viewMode = getDefaultViewMode(),
   activeGeneration,
   isMobile = false,
@@ -126,9 +144,11 @@ export function FamilyTree({
       selectedPersonId,
       edgeFilters,
       viewMode,
+      directRelativeFilters,
+      centralPersonId,
       isMobile,
     });
-  }, [pessoas, relacionamentos, selectedPersonId, edgeFilters, viewMode, isMobile]);
+  }, [pessoas, relacionamentos, selectedPersonId, edgeFilters, directRelativeFilters, centralPersonId, viewMode, isMobile]);
 
   const layoutResult = useMemo(() => {
     const graph = buildTreeGraph({
@@ -144,7 +164,10 @@ export function FamilyTree({
       edgeFilters,
     });
 
-    return getLayoutByViewMode(viewMode, graph);
+    return getLayoutByViewMode(viewMode, graph, {
+      centralPersonId,
+      directRelativeFilters,
+    });
   }, [
     dataHash,
     pessoas,
@@ -157,6 +180,8 @@ export function FamilyTree({
     onPersonRemove,
     selectedPersonId,
     edgeFilters,
+    directRelativeFilters,
+    centralPersonId,
     viewMode,
   ]);
 
@@ -210,6 +235,7 @@ export function FamilyTree({
               onAddConnection: onPersonAddConnection,
               onRemove: onPersonRemove,
               isSelected: node.data.pessoa.id === selectedPersonId,
+              isCentralPerson: viewMode === 'familiares-diretos' && node.data.pessoa.id === centralPersonId,
             },
           };
         }
@@ -235,6 +261,8 @@ export function FamilyTree({
     onPersonAddConnection,
     onPersonRemove,
     onMarriageClick,
+    viewMode,
+    centralPersonId,
     setNodes,
   ]);
 

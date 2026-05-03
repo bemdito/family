@@ -13,6 +13,7 @@ import {
   EditableOwnPersonPayload,
   ensureMemberProfile,
   getPrimaryLinkedPersonWithPessoa,
+  resolveFirstAccessLinkForUser,
   updateOwnLinkedPerson,
   UserPersonLinkRecord,
 } from '../services/memberProfileService';
@@ -83,6 +84,7 @@ export function MeusDados() {
       if (!user) return;
 
       setLoading(true);
+      await resolveFirstAccessLinkForUser(user);
       const { data, error } = await getPrimaryLinkedPersonWithPessoa(user.id);
 
       if (!mounted) return;

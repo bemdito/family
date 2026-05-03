@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
-import { getPrimaryLinkedPerson } from '../services/memberProfileService';
+import { resolveFirstAccessLinkForUser } from '../services/memberProfileService';
 
 function AccessLoading({ message = 'Verificando acesso...' }: { message?: string }) {
   return (
@@ -32,13 +32,13 @@ export function TreeAccessRoute({ children }: { children: React.ReactNode }) {
       }
 
       setChecking(true);
-      const { data } = await getPrimaryLinkedPerson(user.id);
+      const result = await resolveFirstAccessLinkForUser(user);
 
       if (!mounted) return;
 
-      if (!data) {
+      if (result.status !== 'linked') {
         setTarget('auth');
-      } else if (data.dados_confirmados) {
+      } else if (result.data.dados_confirmados) {
         setTarget('tree');
       } else {
         setTarget('review');

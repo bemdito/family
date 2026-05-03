@@ -8,6 +8,20 @@ export interface EdgeFilters {
   irmaos: boolean;
 }
 
+export type DirectRelativeGroup =
+  | 'pais'
+  | 'avos'
+  | 'bisavos'
+  | 'tataravos'
+  | 'conjuge'
+  | 'filhos'
+  | 'netos'
+  | 'irmaos'
+  | 'tios'
+  | 'primos';
+
+export type DirectRelativeFilters = Record<DirectRelativeGroup, boolean>;
+
 export interface GenerationColumnMeta {
   level: number;
   label: string;
@@ -49,6 +63,7 @@ export interface TreeLayoutParams {
   marriageMap: Map<string, string>;
   childrenByMarriage: Map<string, string[]>;
   pessoas: Pessoa[];
+  relacionamentos: Relacionamento[];
   childParentsMap: Map<string, Set<string>>;
 }
 
@@ -100,6 +115,7 @@ export interface PersonNodeData extends PersonNodeContextActions {
   pessoa: Pessoa;
   onClick?: (pessoa: Pessoa) => void;
   isSelected?: boolean;
+  isCentralPerson?: boolean;
 }
 
 export interface MarriageNodeData {
@@ -113,6 +129,19 @@ export const DEFAULT_EDGE_FILTERS: EdgeFilters = {
   filiacao_sangue: true,
   filiacao_adotiva: true,
   irmaos: true,
+};
+
+export const DEFAULT_DIRECT_RELATIVE_FILTERS: DirectRelativeFilters = {
+  pais: true,
+  avos: true,
+  bisavos: true,
+  tataravos: true,
+  conjuge: true,
+  filhos: true,
+  netos: true,
+  irmaos: true,
+  tios: true,
+  primos: true,
 };
 
 export const TREE_CONSTANTS: LayoutConstants = {

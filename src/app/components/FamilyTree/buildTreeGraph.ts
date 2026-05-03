@@ -449,6 +449,7 @@ export function buildTreeGraph({
     marriageMap,
     childrenByMarriage,
     pessoas,
+    relacionamentos,
     childParentsMap,
   };
 }

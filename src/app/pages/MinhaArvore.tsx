@@ -18,7 +18,7 @@ import {
   countPeopleInScope,
   filterPeopleByMemberScope,
 } from '../services/memberTreeService';
-import { ensureMemberProfile, getPrimaryLinkedPerson } from '../services/memberProfileService';
+import { ensureMemberProfile, getPrimaryLinkedPerson, resolveFirstAccessLinkForUser } from '../services/memberProfileService';
 import { Pessoa, Relacionamento } from '../types';
 import { toast } from 'sonner';
 
@@ -85,6 +85,7 @@ export function MinhaArvore() {
       await ensureMemberProfile(user.id, {
         nome_exibicao: (user.user_metadata?.nome_exibicao as string | undefined) ?? user.email ?? null,
       });
+      await resolveFirstAccessLinkForUser(user);
       const { data, error } = await getPrimaryLinkedPerson(user.id);
       if (error) {
         toast.error(error);

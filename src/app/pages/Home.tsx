@@ -16,6 +16,8 @@ import {
   storeActiveGeneration,
   readDesktopNoticeDismissed,
   storeDesktopNoticeDismissed,
+  readDirectRelativeFilters,
+  storeDirectRelativeFilters,
 } from '../components/FamilyTree/utils/treePreferences';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
@@ -34,6 +36,9 @@ import {
 } from '../services/dataService';
 import { Pessoa, Relacionamento, TipoVisualizacaoArvore } from '../types';
 import {
+  DEFAULT_DIRECT_RELATIVE_FILTERS,
+  DirectRelativeFilters,
+  DirectRelativeGroup,
   GenerationColumnMeta,
   MarriageNodeDetails,
 } from '../components/FamilyTree/types';
@@ -76,10 +81,19 @@ export function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [viewMode, setViewMode] = useState<TipoVisualizacaoArvore>('lados');
+  const [viewMode, setViewMode] = useState<TipoVisualizacaoArvore>(() =>
+    user ? 'familiares-diretos' : 'lados'
+  );
   const [activeGeneration, setActiveGeneration] = useState(0);
   const [generationColumns, setGenerationColumns] = useState<GenerationColumnMeta[]>([]);
   const [desktopNoticeDismissed, setDesktopNoticeDismissed] = useState(false);
+  const [directRelativeFilterState, setDirectRelativeFilterState] = useState<{
+    userId?: string;
+    filters: DirectRelativeFilters;
+  }>(() => ({
+    userId: user?.id,
+    filters: readDirectRelativeFilters(user?.id),
+  }));
 
   const [selectedMarriage, setSelectedMarriage] = useState<MarriageNodeDetails | null>(null);
   const [connectionTarget, setConnectionTarget] = useState<Pessoa | null>(null);
@@ -119,13 +133,31 @@ export function Home() {
   }, []);
 
   useEffect(() => {
+    setDirectRelativeFilterState({
+      userId: user?.id,
+      filters: readDirectRelativeFilters(user?.id),
+    });
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!directRelativeFilterState.userId || directRelativeFilterState.userId !== user?.id) return;
+
+    storeDirectRelativeFilters(directRelativeFilterState.userId, directRelativeFilterState.filters);
+  }, [user?.id, directRelativeFilterState]);
+
+  useEffect(() => {
     if (isMobile && viewMode === 'lados') {
       setViewMode('geracoes');
       return;
     }
 
+    if (!user && viewMode === 'familiares-diretos') {
+      setViewMode(isMobile ? 'geracoes' : 'lados');
+      return;
+    }
+
     storeViewMode(viewMode);
-  }, [viewMode, isMobile]);
+  }, [viewMode, isMobile, user]);
 
   useEffect(() => {
     storeActiveGeneration(activeGeneration);
@@ -197,6 +229,10 @@ export function Home() {
       try {
         const { data } = await getPrimaryLinkedPerson(user.id);
         setLinkedPersonId(data?.pessoa_id);
+        if (data?.pessoa_id) {
+          setSelectedPersonId(data.pessoa_id);
+          setViewMode('familiares-diretos');
+        }
       } catch (error) {
         console.error('Erro ao carregar vínculo do membro:', error);
         setLinkedPersonId(undefined);
@@ -372,8 +408,22 @@ export function Home() {
     }));
   }, []);
 
+  const toggleDirectRelativeFilter = useCallback((filterKey: DirectRelativeGroup) => {
+    setDirectRelativeFilterState((prev) => ({
+      userId: user?.id,
+      filters: {
+        ...prev.filters,
+        [filterKey]: !prev.filters[filterKey],
+      },
+    }));
+  }, [user?.id]);
+
   const pessoasVisiveis = useMemo(() => {
     return pessoas.filter((pessoa) => {
+      if (viewMode === 'familiares-diretos' && linkedPersonId && pessoa.id === linkedPersonId) {
+        return true;
+      }
+
       if (pessoa.humano_ou_pet === 'Pet') {
         return personFilters.pets;
       }
@@ -384,7 +434,7 @@ export function Home() {
 
       return personFilters.vivos;
     });
-  }, [pessoas, personFilters]);
+  }, [pessoas, personFilters, linkedPersonId, viewMode]);
 
   const stats = useMemo(() => {
     const pessoasVivas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && !hasDeathDate(p.data_falecimento));
@@ -430,7 +480,7 @@ export function Home() {
   }, [pessoas, relacionamentos]);
 
   const availableModes = useMemo<TipoVisualizacaoArvore[]>(
-    () => (isMobile ? ['geracoes', 'lista'] : ['lados', 'geracoes', 'lista']),
+    () => (isMobile ? ['familiares-diretos', 'geracoes', 'lista'] : ['familiares-diretos', 'lados', 'geracoes', 'lista']),
     [isMobile]
   );
 
@@ -450,6 +500,7 @@ export function Home() {
     (user?.user_metadata?.avatar_url as string | undefined) ||
     null;
   const initials = getInitials(displayName);
+  const directRelativeFilters = directRelativeFilterState.filters;
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -602,6 +653,16 @@ export function Home() {
         </section>
       )}
 
+      {isMobile && viewMode === 'familiares-diretos' && (
+        <section className="border-b border-gray-200 bg-white px-4 py-3">
+          <DirectRelativeFilterGrid
+            filters={directRelativeFilters}
+            onToggle={toggleDirectRelativeFilter}
+            compact
+          />
+        </section>
+      )}
+
       <main className="flex min-h-0 flex-1">
         {!isMobile && (
           <aside
@@ -690,6 +751,16 @@ export function Home() {
                   </div>
                 </section>
 
+                {viewMode === 'familiares-diretos' && (
+                  <section>
+                    <h2 className="mb-3 text-sm font-semibold text-gray-900">Familiares Diretos</h2>
+                    <DirectRelativeFilterGrid
+                      filters={directRelativeFilters}
+                      onToggle={toggleDirectRelativeFilter}
+                    />
+                  </section>
+                )}
+
                 <FamilyTreeLegend />
 
                 {stats.cidadesNascimento.length > 0 && (
@@ -739,6 +810,8 @@ export function Home() {
               onMarriageClick={handleMarriageClick}
               selectedPersonId={selectedPersonId}
               edgeFilters={edgeFilters}
+              directRelativeFilters={directRelativeFilters}
+              centralPersonId={linkedPersonId}
               viewMode={viewMode}
               activeGeneration={activeGeneration}
               isMobile={isMobile}
@@ -876,6 +949,46 @@ function FilterButton({
       <span>{children}</span>
       <span className={active ? 'text-blue-700' : 'text-gray-400'}>{active ? 'Ativo' : 'Oculto'}</span>
     </button>
+  );
+}
+
+const DIRECT_RELATIVE_FILTER_OPTIONS: Array<{
+  key: DirectRelativeGroup;
+  label: string;
+}> = [
+  { key: 'pais', label: 'Pais' },
+  { key: 'avos', label: 'Avós' },
+  { key: 'bisavos', label: 'Bisavós' },
+  { key: 'tataravos', label: 'Tataravós' },
+  { key: 'conjuge', label: 'Cônjuge' },
+  { key: 'filhos', label: 'Filhos' },
+  { key: 'netos', label: 'Netos' },
+  { key: 'irmaos', label: 'Irmãos' },
+  { key: 'tios', label: 'Tios' },
+  { key: 'primos', label: 'Primos' },
+];
+
+function DirectRelativeFilterGrid({
+  filters,
+  onToggle,
+  compact = false,
+}: {
+  filters: DirectRelativeFilters;
+  onToggle: (key: DirectRelativeGroup) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className={compact ? 'grid grid-cols-2 gap-2 sm:grid-cols-5' : 'space-y-2'}>
+      {DIRECT_RELATIVE_FILTER_OPTIONS.map((option) => (
+        <FilterButton
+          key={option.key}
+          active={filters[option.key]}
+          onClick={() => onToggle(option.key)}
+        >
+          {option.label}
+        </FilterButton>
+      ))}
+    </div>
   );
 }
 

@@ -8,7 +8,7 @@ export type SubtipoRelacionamento = 'sangue' | 'adotivo' | 'uniao' | 'casamento'
 
 export type LadoPessoa = 'esquerda' | 'direita';
 
-export type TipoVisualizacaoArvore = 'lados' | 'geracoes' | 'lista';
+export type TipoVisualizacaoArvore = 'familiares-diretos' | 'lados' | 'geracoes' | 'lista';
 
 export type GeracaoSociologica =
   | 'Geração Silenciosa'

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { User } from '@supabase/supabase-js';
 import { ArrowRight, KeyRound, Lock, LogIn, Mail, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -11,14 +12,14 @@ import { supabase } from '../lib/supabaseClient';
 import {
   ensureMemberProfile,
   FirstAccessPersonPreview,
-  getPrimaryLinkedPerson,
   isPersonAlreadyLinked,
-  linkUserToPerson,
+  resolveFirstAccessLinkForUser,
+  storePendingFirstAccess,
   validateFirstAccessCode,
 } from '../services/memberProfileService';
 
 type AuthMode = 'login' | 'first-access';
-type FirstAccessStep = 'code' | 'account';
+type FirstAccessStep = 'code' | 'account' | 'confirmation';
 
 function friendlyAuthError(message: string) {
   const lower = message.toLowerCase();
@@ -65,13 +66,13 @@ export function Entrar() {
       }
 
       setCheckingSession(true);
-      const { data } = await getPrimaryLinkedPerson(user.id);
+      const result = await resolveFirstAccessLinkForUser(user);
 
       if (!mounted) return;
 
-      if (data?.dados_confirmados) {
+      if (result.status === 'linked' && result.data.dados_confirmados) {
         navigate('/', { replace: true });
-      } else if (data) {
+      } else if (result.status === 'linked') {
         navigate('/meus-dados', { replace: true });
       } else {
         setCheckingSession(false);
@@ -86,24 +87,40 @@ export function Entrar() {
   }, [loading, navigate, user]);
 
   const title = useMemo(() => {
+    if (firstAccessStep === 'confirmation') return 'Confirme seu e-mail';
     if (mode === 'login') return 'Entrar na árvore';
-    return firstAccessStep === 'code' ? 'Primeiro acesso' : 'Criar conta';
+    if (firstAccessStep === 'code') return 'Primeiro acesso';
+    return 'Criar conta';
   }, [firstAccessStep, mode]);
 
-  const routeAfterAuth = async (userId: string) => {
-    const { data, error } = await getPrimaryLinkedPerson(userId);
+  const routeAfterAuth = async (authUser: User) => {
+    const result = await resolveFirstAccessLinkForUser(authUser);
 
-    if (error) {
-      toast.error(error);
+    if (result.status === 'error') {
+      toast.error(result.error);
       return;
     }
 
-    if (!data) {
-      toast.error('Sua conta ainda não está vinculada a uma pessoa da árvore.');
+    if (result.status === 'person-already-linked') {
+      toast.error('Este código já foi utilizado por outra conta.');
       return;
     }
 
-    navigate(data.dados_confirmados ? '/' : '/meus-dados', { replace: true });
+    if (result.status === 'person-not-found') {
+      toast.error('O código de primeiro acesso salvo não corresponde a uma pessoa da árvore.');
+      return;
+    }
+
+    if (result.status === 'missing-pessoa-id') {
+      toast.error('Sua conta ainda não está vinculada a uma pessoa da árvore. Faça o primeiro acesso novamente usando seu código ou solicite ajuda.');
+      return;
+    }
+
+    if (result.created) {
+      toast.success('Vínculo criado. Revise seus dados para continuar.');
+    }
+
+    navigate(result.data.dados_confirmados ? '/' : '/meus-dados', { replace: true });
   };
 
   const handleLogin = async (event: React.FormEvent) => {
@@ -131,7 +148,7 @@ export function Entrar() {
       return;
     }
 
-    await routeAfterAuth(data.user.id);
+    await routeAfterAuth(data.user);
   };
 
   const handleValidateCode = async (event: React.FormEvent) => {
@@ -215,6 +232,7 @@ export function Entrar() {
         data: {
           nome_exibicao: preview.nome_completo,
           pessoa_id: preview.pessoa_id,
+          primeiro_acesso: true,
         },
       },
     });
@@ -231,9 +249,11 @@ export function Entrar() {
       return;
     }
 
+    storePendingFirstAccess(preview.pessoa_id, signupEmail);
+
     if (!data.session) {
       setSubmitting(false);
-      toast.info('Conta criada. Confirme seu e-mail e faça login para concluir o vínculo.');
+      setFirstAccessStep('confirmation');
       setMode('login');
       return;
     }
@@ -248,18 +268,22 @@ export function Entrar() {
       return;
     }
 
-    const linkResult = await linkUserToPerson({
-      userId: data.user.id,
-      pessoaId: preview.pessoa_id,
-      relacaoComPerfil: 'Sou esta pessoa',
-      principal: true,
-      dadosConfirmados: false,
-    });
+    const linkResult = await resolveFirstAccessLinkForUser(data.user);
 
     setSubmitting(false);
 
-    if (linkResult.error) {
+    if (linkResult.status === 'error') {
       toast.error(linkResult.error);
+      return;
+    }
+
+    if (linkResult.status === 'person-already-linked') {
+      toast.error('Este código já foi utilizado por outra conta.');
+      return;
+    }
+
+    if (linkResult.status !== 'linked') {
+      toast.error('Não foi possível criar o vínculo com a pessoa da árvore.');
       return;
     }
 
@@ -307,14 +331,37 @@ export function Entrar() {
                 <CardTitle className="text-2xl">{title}</CardTitle>
                 <p className="mt-2 text-sm text-gray-500">
                   {mode === 'login'
-                    ? 'Entre com seu e-mail e senha para acessar sua árvore.'
+                    ? firstAccessStep === 'confirmation'
+                      ? 'Finalize a confirmação no seu e-mail antes de entrar.'
+                      : 'Entre com seu e-mail e senha para acessar sua árvore.'
                     : 'Informe o código recebido e crie suas credenciais.'}
                 </p>
               </div>
             </CardHeader>
 
             <CardContent>
-              {mode === 'login' ? (
+              {mode === 'login' && firstAccessStep === 'confirmation' ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                    <p className="text-sm font-semibold text-green-950">Cadastro iniciado com sucesso.</p>
+                    <p className="mt-2 text-sm text-green-800">
+                      Enviamos um email de confirmação para você. Confirme seu email e depois faça login para continuar.
+                    </p>
+                  </div>
+
+                  <Button
+                    type="button"
+                    className="w-full"
+                    onClick={() => {
+                      setFirstAccessStep('code');
+                      setMode('login');
+                      setLoginEmail(signupEmail);
+                    }}
+                  >
+                    Ir para login
+                  </Button>
+                </div>
+              ) : mode === 'login' ? (
                 <form onSubmit={handleLogin} className="space-y-4">
                   <Field label="E-mail">
                     <div className="relative">
