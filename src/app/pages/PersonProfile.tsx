@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router';
-import { Card, CardContent } from '../components/ui/card';
+import { useParams, useNavigate } from 'react-router';
+import { AppLink as Link } from '../components/AppLink';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { obterPessoaPorId, obterRelacionamentosDaPessoa } from '../services/dataService';
+import { obterPessoaPorId, obterRelacionamentosDaPessoa, obterTodasPessoas } from '../services/dataService';
 import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
 import { alternarFavorito, conteudoEstaFavoritado } from '../services/userEngagementService';
 import { listarTopicosForum } from '../services/forumService';
@@ -12,10 +13,11 @@ import {
   Star, 
   Bell,
   MessageCircle,
-  Plus
+  Plus,
+  Users
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { PersonDataView } from '../components/person/PersonDataView';
+import { PersonAstrologyCard, PersonDataView, PersonHistoricalEventsCard } from '../components/person/PersonDataView';
 import { PersonRelationshipsView } from '../components/person/PersonRelationshipsView';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditPerson, getLinkedPessoaIdForUser, isMainAdmin } from '../services/permissionService';
@@ -37,6 +39,68 @@ const EMPTY_RELATIONSHIPS: ProfileRelationships = {
   irmaos: [],
 };
 
+function uniqueById(people: Pessoa[]) {
+  return Array.from(new Map(people.map((person) => [person.id, person])).values());
+}
+
+function getKinshipResult(selectedId: string, currentPersonId: string, relationships: ProfileRelationships) {
+  if (!selectedId) return '';
+  if (selectedId === currentPersonId) return 'É a própria pessoa.';
+
+  const parents = uniqueById([...relationships.pais, ...relationships.maes]);
+  if (parents.some((person) => person.id === selectedId)) return 'Pai/Mãe';
+  if (relationships.conjuges.some((person) => person.id === selectedId)) return 'Cônjuge';
+  if (relationships.filhos.some((person) => person.id === selectedId)) return 'Filho(a)';
+  if (relationships.irmaos.some((person) => person.id === selectedId)) return 'Irmão(ã)';
+
+  return 'Parentesco ainda não identificado automaticamente.';
+}
+
+function RelationshipDiscoveryBox({
+  currentPersonId,
+  people,
+  relationships,
+}: {
+  currentPersonId: string;
+  people: Pessoa[];
+  relationships: ProfileRelationships;
+}) {
+  const [selectedId, setSelectedId] = useState('');
+  const result = getKinshipResult(selectedId, currentPersonId, relationships);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5 text-blue-600" />
+          Descubra seu parentesco com...
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.7fr)] md:items-center">
+            <select
+              value={selectedId}
+              onChange={(event) => setSelectedId(event.target.value)}
+              className="h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="">Selecione uma pessoa</option>
+              {people.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.nome_completo}
+                </option>
+              ))}
+            </select>
+            <div className="rounded-lg bg-white/80 p-3 text-sm text-gray-700">
+              {result || 'O resultado aparece aqui após a seleção.'}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function PersonProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -49,10 +113,19 @@ export function PersonProfile() {
   const [forumLoading, setForumLoading] = useState(false);
   const [favoritado, setFavoritado] = useState(false);
   const [linkedPessoaId, setLinkedPessoaId] = useState<string | null>(null);
+  const [allPeople, setAllPeople] = useState<Pessoa[]>([]);
   const canEdit = useMemo(
     () => canEditPerson({ currentUser: user, pessoaId: id, linkedPessoaId }),
     [id, linkedPessoaId, user],
   );
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    console.debug('[profile-navigation] PersonProfile route mounted/updated', {
+      id,
+      pathname: window.location.pathname,
+    });
+  }, [id]);
 
   useEffect(() => {
     let mounted = true;
@@ -121,6 +194,26 @@ export function PersonProfile() {
       mounted = false;
     };
   }, [id, pessoa]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadPeople() {
+      try {
+        const pessoas = await obterTodasPessoas();
+        if (mounted) setAllPeople(pessoas);
+      } catch (error) {
+        console.error('Erro ao carregar pessoas para parentesco:', error);
+        if (mounted) setAllPeople([]);
+      }
+    }
+
+    loadPeople();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -231,27 +324,23 @@ export function PersonProfile() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-5xl mx-auto space-y-6 px-6 py-8">
         <PersonDataView pessoa={pessoa} />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="md:col-span-2">
-            <PersonRelationshipsView relationships={relacionamentos} loading={relationshipsLoading} />
-          </div>
+        <PersonRelationshipsView relationships={relacionamentos} loading={relationshipsLoading} />
 
-          {/* Historical Files */}
-          {pessoa.arquivos_historicos && pessoa.arquivos_historicos.length > 0 && (
-            <div className="md:col-span-2">
-              <ArquivosHistoricos 
-                arquivos={pessoa.arquivos_historicos} 
-                onChange={() => {}}
-                readOnly={true}
-              />
-            </div>
-          )}
+        <RelationshipDiscoveryBox
+          currentPersonId={pessoa.id}
+          people={allPeople.length > 0 ? allPeople : [pessoa]}
+          relationships={relacionamentos}
+        />
+
+        <PersonAstrologyCard pessoa={pessoa} />
+
+        <PersonHistoricalEventsCard pessoa={pessoa} />
 
           {user && (
-            <section className="md:col-span-2">
+            <section>
               <Card>
                 <CardContent className="p-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -309,7 +398,14 @@ export function PersonProfile() {
               </Card>
             </section>
           )}
-        </div>
+
+        {pessoa.arquivos_historicos && pessoa.arquivos_historicos.length > 0 && (
+          <ArquivosHistoricos
+            arquivos={pessoa.arquivos_historicos}
+            onChange={() => {}}
+            readOnly={true}
+          />
+        )}
       </main>
     </div>
   );

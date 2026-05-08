@@ -510,6 +510,8 @@ function compactColumns(ids: string[], label: string, maxColumns: number, laneWi
   const visibleCount = Math.max(1, ids.length);
   const units = buildGroupLayoutUnits(ids, index);
   const minColumns = Math.max(1, ...units.map(unitCardCount));
+  if (maxColumns <= 1) return 1;
+
   const cappedMax = Math.min(Math.max(maxColumns, minColumns), visibleCount);
   const preferred = visibleCount <= 2
     ? Math.min(Math.max(2, minColumns), cappedMax)
@@ -852,7 +854,7 @@ export function directFamilyDistributedLayout(
     label: 'Irmãos',
     ids: siblings,
     variant: 'sibling',
-    maxPerRow: 3,
+    maxPerRow: 1,
     centerX: CENTRAL_X + LOWER_LANE_WIDTH / 2,
     laneWidth: LOWER_LANE_WIDTH,
     alignBoundary: { side: 'left', x: CENTRAL_X },

@@ -1,5 +1,6 @@
 import React, { FormEvent, useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
+import { AppLink as Link } from '../../components/AppLink';
 import { ArrowLeft, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../components/ui/button';

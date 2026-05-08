@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router';
+import { flushSync } from 'react-dom';
+import { useNavigate } from 'react-router';
 
 import { FamilyTree } from '../components/FamilyTree/FamilyTree';
 import { ViewMarriageModal } from '../components/FamilyTree/modals/ViewMarriageModal';
@@ -354,16 +355,24 @@ export function Home() {
 
   const navigateToPersonProfile = useCallback(
     (personId: string) => {
-      window.setTimeout(() => {
-        navigate(`/pessoa/${personId}`);
-      }, 0);
+      const path = `/pessoa/${personId}`;
+      navigate(path, { replace: false, flushSync: true });
+    },
+    [navigate]
+  );
+
+  const navigateFromHome = useCallback(
+    (path: string) => {
+      navigate(path, { replace: false, flushSync: true });
     },
     [navigate]
   );
 
   const handlePersonClick = useCallback(
     (pessoa: Pessoa) => {
-      setSelectedPersonId(pessoa.id);
+      flushSync(() => {
+        setSelectedPersonId(pessoa.id);
+      });
 
       if (!isMobile) {
         navigateToPersonProfile(pessoa.id);
@@ -386,7 +395,9 @@ export function Home() {
 
   const handlePersonView = useCallback(
     (pessoa: Pessoa) => {
-      setSelectedPersonId(pessoa.id);
+      flushSync(() => {
+        setSelectedPersonId(pessoa.id);
+      });
       navigateToPersonProfile(pessoa.id);
     },
     [navigateToPersonProfile]
@@ -648,11 +659,11 @@ export function Home() {
               displayName={displayName}
               avatarUrl={avatarUrl}
               initials={initials}
-              onLogin={() => navigate('/entrar')}
-              onEditProfile={() => navigate('/minha-arvore')}
-              onFavorites={() => navigate('/meus-favoritos')}
-              onCalendar={() => navigate('/calendario-familiar')}
-              onAdmin={() => navigate('/admin/login')}
+              onLogin={() => navigateFromHome('/entrar')}
+              onEditProfile={() => navigateFromHome('/minha-arvore')}
+              onFavorites={() => navigateFromHome('/meus-favoritos')}
+              onCalendar={() => navigateFromHome('/calendario-familiar')}
+              onAdmin={() => navigateFromHome('/admin/login')}
               onSignOut={handleSignOut}
             />
 
@@ -687,17 +698,16 @@ export function Home() {
               <span className="hidden xl:inline">Curiosidades</span>
             </Button>
 
-            <Link to="/forum" className="shrink-0">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9 shrink-0"
-                title="Fórum de Discussões"
-                aria-label="Abrir Fórum de Discussões"
-              >
-                <MessageCircle className="h-4 w-4" />
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              title="Fórum de Discussões"
+              aria-label="Abrir Fórum de Discussões"
+              onClick={() => navigateFromHome('/forum')}
+            >
+              <MessageCircle className="h-4 w-4" />
+            </Button>
 
             <Popover>
               <PopoverTrigger asChild>
@@ -762,11 +772,16 @@ export function Home() {
                 )}
               </div>
 
-              <Link to="/notificacoes" className="shrink-0">
-                <Button variant="outline" size="icon" className="h-9 w-9" title="Notificações">
-                  <Bell className="w-4 h-4" />
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                title="Notificações"
+                aria-label="Abrir notificações"
+                onClick={() => navigateFromHome('/notificacoes')}
+              >
+                <Bell className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         </div>

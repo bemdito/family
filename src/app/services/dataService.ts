@@ -275,6 +275,7 @@ export async function obterRelacionamentosDaPessoa(pessoaId: string) {
     const conjugesSet = new Set<string>();
     const filhosSet = new Set<string>();
     const irmaosSet = new Set<string>();
+    const parentIdsSet = new Set<string>();
 
     for (const rel of relacionamentos) {
       // Relações criadas A PARTIR da pessoa atual
@@ -284,6 +285,7 @@ export async function obterRelacionamentosDaPessoa(pessoaId: string) {
 
         if (rel.tipo_relacionamento === 'pai') paisSet.add(destino.id);
         if (rel.tipo_relacionamento === 'mae') maesSet.add(destino.id);
+        if (rel.tipo_relacionamento === 'pai' || rel.tipo_relacionamento === 'mae') parentIdsSet.add(destino.id);
         if (rel.tipo_relacionamento === 'conjuge') conjugesSet.add(destino.id);
         if (rel.tipo_relacionamento === 'filho') filhosSet.add(destino.id);
         if (rel.tipo_relacionamento === 'irmao') irmaosSet.add(destino.id);
@@ -308,6 +310,55 @@ export async function obterRelacionamentosDaPessoa(pessoaId: string) {
         // essa origem é pai/mãe da pessoa atual no relacionamento reverso,
         // e NÃO deve ser adicionada à seção "Filhos".
         // Por isso não fazemos nada aqui.
+        if (rel.tipo_relacionamento === 'filho') parentIdsSet.add(origem.id);
+      }
+    }
+
+    const parentIds = Array.from(parentIdsSet);
+
+    if (parentIds.length > 0) {
+      const parentFilter = parentIds
+        .flatMap((parentId) => [`pessoa_origem_id.eq.${parentId}`, `pessoa_destino_id.eq.${parentId}`])
+        .join(',');
+
+      const { data: parentRelationshipsData, error: parentRelationshipsError } = await supabase
+        .from('relacionamentos')
+        .select('*')
+        .or(parentFilter);
+
+      if (parentRelationshipsError) {
+        logSupabaseError(`Erro ao inferir irmãos da pessoa ${pessoaId}`, parentRelationshipsError);
+      } else {
+        const parentRelationships = (parentRelationshipsData || []).map(toRelacionamento);
+
+        for (const rel of parentRelationships) {
+          let siblingId: string | undefined;
+
+          // Filho(a) -> Pai/Mãe
+          if (
+            (rel.tipo_relacionamento === 'pai' || rel.tipo_relacionamento === 'mae') &&
+            parentIdsSet.has(rel.pessoa_destino_id)
+          ) {
+            siblingId = rel.pessoa_origem_id;
+          }
+
+          // Pai/Mãe -> Filho(a)
+          if (rel.tipo_relacionamento === 'filho' && parentIdsSet.has(rel.pessoa_origem_id)) {
+            siblingId = rel.pessoa_destino_id;
+          }
+
+          if (siblingId && siblingId !== pessoaId) {
+            irmaosSet.add(siblingId);
+          }
+        }
+      }
+    }
+
+    const inferredSiblingIds = Array.from(irmaosSet).filter((id) => !pessoasMap.has(id));
+    if (inferredSiblingIds.length > 0) {
+      const inferredSiblings = await obterPessoasPorIds(inferredSiblingIds);
+      for (const sibling of inferredSiblings) {
+        pessoasMap.set(sibling.id, sibling);
       }
     }
 

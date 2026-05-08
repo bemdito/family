@@ -617,15 +617,6 @@ export function FamilyTree({
     return () => window.clearTimeout(timer);
   }, [activeGeneration, generationColumns, viewMode, isMobile, NODE_WIDTH]);
 
-  const onNodeClick = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      if (node.type === 'personNode' && onPersonClick && node.data?.pessoa) {
-        onPersonClick(node.data.pessoa);
-      }
-    },
-    [onPersonClick]
-  );
-
   const handleNodeDrag = useCallback<NodeDragHandler>(
     (_event, node) => {
       if (viewMode === 'lista' || node.type !== 'personNode' || generationColumns.length === 0) {
@@ -719,6 +710,14 @@ export function FamilyTree({
     [isDirectFamilyView]
   );
 
+  const handleNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (node.type !== 'personNode' || !node.data?.pessoa) return;
+      onPersonClick?.(node.data.pessoa);
+    },
+    [onPersonClick]
+  );
+
   return (
     <div
       ref={containerRef}
@@ -734,7 +733,7 @@ export function FamilyTree({
         onInit={handleInit}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}
+        onNodeClick={handleNodeClick}
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
         onMove={handleMove}

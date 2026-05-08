@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { AppLink as Link } from '../components/AppLink';
 import {
   ArrowLeft,
   Bell,

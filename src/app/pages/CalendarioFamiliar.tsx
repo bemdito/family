@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
+import { AppLink as Link } from '../components/AppLink';
 import { ChevronLeft, ChevronRight, ArrowLeft, Gift, Heart, CalendarSync, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { obterTodasPessoas } from '../services/dataService';

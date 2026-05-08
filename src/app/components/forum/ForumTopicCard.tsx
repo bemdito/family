@@ -1,5 +1,5 @@
 import { CheckCircle2, MessageCircle, Pin, Sparkles } from 'lucide-react';
-import { Link } from 'react-router';
+import { AppLink as Link } from '../AppLink';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { ForumCategoria, ForumTopico, ForumTopicoStatus, ForumTopicoTipo } from '../../types';

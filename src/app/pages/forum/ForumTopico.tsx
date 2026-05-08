@@ -1,5 +1,6 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
+import { AppLink as Link } from '../../components/AppLink';
 import {
   ArrowLeft,
   CheckCircle2,

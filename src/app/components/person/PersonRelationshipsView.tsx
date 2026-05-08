@@ -1,8 +1,9 @@
 import React from 'react';
-import { Heart, Users } from 'lucide-react';
+import { Heart, User, Users } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Pessoa } from '../../types';
+import { getRelationshipSubtitle } from '../../utils/personProfile';
 
 type RelationshipGroups = {
   pais: Pessoa[];
@@ -18,15 +19,26 @@ function uniqueById(people: Pessoa[]) {
 
 function PersonButton({ person, label }: { person: Pessoa; label: string }) {
   const navigate = useNavigate();
+  const isPet = person.humano_ou_pet === 'Pet';
 
   return (
     <button
       type="button"
-      onClick={() => navigate(`/pessoas/${person.id}`)}
-      className="w-full rounded-lg border border-gray-200 p-3 text-left transition-colors hover:bg-gray-50"
+      onClick={() => navigate(`/pessoa/${person.id}`, { flushSync: true })}
+      className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-3 text-left transition-colors hover:bg-gray-50"
+      aria-label={`Abrir perfil de ${person.nome_completo}`}
     >
-      <p className="text-sm font-medium text-gray-900">{person.nome_completo}</p>
-      <p className="text-xs text-gray-500">{label}</p>
+      <span className={`flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full ${isPet ? 'bg-amber-100' : 'bg-blue-50'}`}>
+        {person.foto_principal_url ? (
+          <img src={person.foto_principal_url} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <User className={`h-6 w-6 ${isPet ? 'text-amber-700' : 'text-blue-700'}`} />
+        )}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-gray-900">{person.nome_completo}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-gray-500">{getRelationshipSubtitle(person) || label}</span>
+      </span>
     </button>
   );
 }

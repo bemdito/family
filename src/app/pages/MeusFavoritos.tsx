@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { AppLink as Link } from '../components/AppLink';
 import { ArrowLeft, Heart, Trash2, FileText, CalendarDays, User } from 'lucide-react';
 import { FavoritoUsuario, Pessoa } from '../types';
 import { listarFavoritos, removerFavorito } from '../services/userEngagementService';
