@@ -8,7 +8,7 @@ export const FAMILY_TREE_COLORS = {
 } as const;
 
 export const DIRECT_FAMILY_TOKENS = {
-  CARD_WIDTH: 280,
+  CARD_WIDTH: 310,
   CARD_HEIGHT: 108,
   CENTRAL_WIDTH: 620,
   CENTRAL_HEIGHT: 680,

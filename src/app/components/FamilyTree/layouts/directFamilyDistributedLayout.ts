@@ -90,11 +90,11 @@ const SIDE_GROUPS_BOTTOM = 1835;
 const CENTRAL_GROUP_TOP = 250;
 const CENTRAL_GROUP_BOTTOM = 1585;
 
-const GROUP_BOX_PADDING_X = 14;
-const GROUP_BOX_PADDING_Y = 14;
-const LABEL_HEIGHT = 34;
-const LABEL_TO_CARD_GAP = 10;
-const COLUMN_GAP = 18;
+const GROUP_BOX_PADDING_X = 10;
+const GROUP_BOX_PADDING_Y = 10;
+const LABEL_HEIGHT = 30;
+const LABEL_TO_CARD_GAP = 8;
+const COLUMN_GAP = 14;
 const ROW_GAP = 16;
 const ROW_STEP = CARD_HEIGHT + ROW_GAP;
 const SIDE_TOP = SIDE_GROUPS_TOP;
@@ -106,9 +106,9 @@ const PARENT_GROUP_Y = CENTRAL_GROUP_TOP + 65;
 const PARENT_GROUP_GAP = 260;
 const FATHER_GROUP_CENTER_X = VIEW_CENTER_X - PARENT_GROUP_GAP;
 const MOTHER_GROUP_CENTER_X = VIEW_CENTER_X + PARENT_GROUP_GAP;
-const CENTRAL_LEFT_BOUNDARY = CENTRAL_X - 110;
-const CENTRAL_RIGHT_BOUNDARY = CENTRAL_X + CENTRAL_WIDTH + 110;
-const SIDE_INNER_GAP = 18;
+const CENTRAL_LEFT_BOUNDARY = CENTRAL_X - 80;
+const CENTRAL_RIGHT_BOUNDARY = CENTRAL_X + CENTRAL_WIDTH + 80;
+const SIDE_INNER_GAP = 12;
 const PATERNAL_LANE_LEFT = FRAME_LEFT;
 const PATERNAL_LANE_RIGHT = CENTRAL_LEFT_BOUNDARY - SIDE_INNER_GAP;
 const MATERNAL_LANE_LEFT = CENTRAL_RIGHT_BOUNDARY + SIDE_INNER_GAP;
@@ -117,13 +117,15 @@ const SIDE_LANE_WIDTH = Math.min(
   PATERNAL_LANE_RIGHT - PATERNAL_LANE_LEFT,
   MATERNAL_LANE_RIGHT - MATERNAL_LANE_LEFT
 );
-const PATERNAL_GROUP_LANE_WIDTH = Math.min(760, SIDE_LANE_WIDTH);
-const MATERNAL_GROUP_LANE_WIDTH = Math.min(800, SIDE_LANE_WIDTH);
+const PATERNAL_GROUP_LANE_WIDTH = Math.min(820, SIDE_LANE_WIDTH);
+const MATERNAL_GROUP_LANE_WIDTH = Math.min(820, SIDE_LANE_WIDTH);
 const PATERNAL_CENTER_X = FRAME_LEFT + (CENTRAL_LEFT_BOUNDARY - FRAME_LEFT) / 2;
 const MATERNAL_CENTER_X = CENTRAL_RIGHT_BOUNDARY + (FRAME_RIGHT - CENTRAL_RIGHT_BOUNDARY) / 2;
 const LOWER_GROUP_Y = CENTRAL_Y + CENTRAL_HEIGHT + 24;
 const LOWER_LANE_WIDTH = 760;
 const LOWER_GROUP_GAP = 18;
+const LOWER_LEFT_GROUP_CENTER_X = FATHER_GROUP_CENTER_X;
+const LOWER_RIGHT_GROUP_CENTER_X = MOTHER_GROUP_CENTER_X;
 const DIRECT_STRUCTURAL_EDGE_STYLE = {
   stroke: DIRECT_FAMILY_TOKENS.EDGE_STROKE,
   strokeWidth: DIRECT_FAMILY_TOKENS.EDGE_STROKE_WIDTH,
@@ -897,9 +899,8 @@ export function directFamilyDistributedLayout(
     ids: siblings,
     variant: 'sibling',
     maxPerRow: 1,
-    centerX: CENTRAL_X + LOWER_LANE_WIDTH / 2,
+    centerX: LOWER_LEFT_GROUP_CENTER_X,
     laneWidth: LOWER_LANE_WIDTH,
-    alignBoundary: { side: 'left', x: CENTRAL_X },
   };
   const nephewGroup: GroupSpec = {
     key: 'sobrinhos',
@@ -907,9 +908,8 @@ export function directFamilyDistributedLayout(
     ids: nephews,
     variant: 'nephewNiece',
     maxPerRow: 3,
-    centerX: CENTRAL_X + LOWER_LANE_WIDTH / 2,
+    centerX: LOWER_LEFT_GROUP_CENTER_X,
     laneWidth: LOWER_LANE_WIDTH,
-    alignBoundary: { side: 'left', x: CENTRAL_X },
   };
   const spouseGroup: GroupSpec = {
     key: 'conjuge',
@@ -917,9 +917,8 @@ export function directFamilyDistributedLayout(
     ids: spouses,
     variant: 'spouse',
     maxPerRow: 1,
-    centerX: CENTRAL_X + CENTRAL_WIDTH - LOWER_LANE_WIDTH / 2,
+    centerX: LOWER_RIGHT_GROUP_CENTER_X,
     laneWidth: LOWER_LANE_WIDTH,
-    alignBoundary: { side: 'right', x: CENTRAL_X + CENTRAL_WIDTH },
   };
   const childrenGroup: GroupSpec = {
     key: 'filhos',
@@ -927,9 +926,8 @@ export function directFamilyDistributedLayout(
     ids: children,
     variant: 'child',
     maxPerRow: 3,
-    centerX: CENTRAL_X + CENTRAL_WIDTH - LOWER_LANE_WIDTH / 2,
+    centerX: LOWER_RIGHT_GROUP_CENTER_X,
     laneWidth: LOWER_LANE_WIDTH,
-    alignBoundary: { side: 'right', x: CENTRAL_X + CENTRAL_WIDTH },
   };
   const grandchildrenGroup: GroupSpec = {
     key: 'netos',
@@ -937,9 +935,8 @@ export function directFamilyDistributedLayout(
     ids: grandchildren,
     variant: 'grandchild',
     maxPerRow: 3,
-    centerX: CENTRAL_X + CENTRAL_WIDTH - LOWER_LANE_WIDTH / 2,
+    centerX: LOWER_RIGHT_GROUP_CENTER_X,
     laneWidth: LOWER_LANE_WIDTH,
-    alignBoundary: { side: 'right', x: CENTRAL_X + CENTRAL_WIDTH },
   };
   const siblingsHeight = visibleGroupHeight(siblings, resolveGroupColumns(siblingGroup, siblings, index), index);
   const spouseHeight = visibleGroupHeight(spouses, resolveGroupColumns(spouseGroup, spouses, index), index);

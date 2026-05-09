@@ -29,6 +29,8 @@ function DirectFamilyAnchorNode() {
     React.createElement(Handle, { type: 'target', position: Position.Top, id: 'top', style: { top: 0, left: 0, ...hiddenHandle } }),
     React.createElement(Handle, { type: 'source', position: Position.Bottom, id: 'bottom', style: { bottom: 0, left: 0, ...hiddenHandle } }),
     React.createElement(Handle, { type: 'source', position: Position.Right, id: 'right', style: { right: 0, top: 0, ...hiddenHandle } }),
+    React.createElement(Handle, { type: 'target', position: Position.Right, id: 'right', style: { right: 0, top: 0, ...hiddenHandle } }),
+    React.createElement(Handle, { type: 'source', position: Position.Left, id: 'left', style: { left: 0, top: 0, ...hiddenHandle } }),
     React.createElement(Handle, { type: 'target', position: Position.Left, id: 'left', style: { left: 0, top: 0, ...hiddenHandle } })
   );
 }

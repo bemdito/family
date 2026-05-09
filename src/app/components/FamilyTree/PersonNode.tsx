@@ -336,7 +336,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
             'cursor-pointer rounded-lg border-[3px] shadow-lg transition-all hover:shadow-xl',
             isCentralDirectNode
               ? 'flex flex-col items-center justify-start px-12 py-11 text-center'
-              : 'flex items-center gap-3 px-4 py-3',
+              : 'flex items-center gap-3 px-3 py-2',
             isSelected ? 'ring-2 ring-blue-300' : '',
           ].join(' ')}
           onClick={handleClick}
@@ -369,7 +369,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
             <h3
               className={[
                 'font-bold leading-tight',
-                isCentralDirectNode ? 'whitespace-normal break-words text-4xl' : 'truncate text-[17px]',
+                isCentralDirectNode ? 'whitespace-normal break-words text-4xl' : 'truncate text-[19px]',
               ].join(' ')}
               title={pessoa.nome_completo}
             >
@@ -389,7 +389,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
               <p
                 className={[
                   'truncate leading-tight',
-                  'mt-0.5 text-[14px]',
+                  'mt-0.5 text-[15px]',
                 ].join(' ')}
                 style={{ color: style.muted }}
                 title={directSecondaryText}
