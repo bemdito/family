@@ -3,6 +3,7 @@ import { NodeProps } from 'reactflow';
 
 interface DirectFamilyLabelNodeData {
   label: string;
+  subtitle?: string;
   width?: number;
   variant?: 'group' | 'title';
 }
@@ -11,11 +12,18 @@ export const DirectFamilyLabelNode = React.memo(({ data }: NodeProps<DirectFamil
   if (data.variant === 'title') {
     return (
       <div
-        className="pointer-events-none select-none whitespace-nowrap text-center text-5xl font-extrabold leading-[3.75rem] tracking-normal text-slate-900"
+        className="pointer-events-none select-none text-center tracking-normal"
         aria-label={data.label}
         style={{ width: data.width ?? 1280 }}
       >
-        {data.label}
+        <div className="whitespace-nowrap text-6xl font-extrabold leading-[4.25rem] text-slate-900">
+          {data.label}
+        </div>
+        {data.subtitle && (
+          <div className="mt-2 whitespace-nowrap text-2xl font-medium leading-8 text-slate-600">
+            {data.subtitle}
+          </div>
+        )}
       </div>
     );
   }

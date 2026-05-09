@@ -2,7 +2,22 @@ import React from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { User, Dog, Eye, Pencil, Link2, Trash2 } from 'lucide-react';
 import { PersonNodeData } from './types';
-import { DIRECT_FAMILY_TOKENS, FAMILY_TREE_COLORS, hasDeathDate } from './visualTokens';
+import {
+  DIRECT_FAMILY_TOKENS,
+  FAMILY_TREE_COLORS,
+  hasDeathDate,
+} from './visualTokens';
+import {
+  DIRECT_FAMILY_RELATION_COLORS,
+  DIRECT_FAMILY_STATUS_BORDER_COLORS,
+} from './directFamilyColors';
+
+const DIRECT_FAMILY_PET_STYLE = {
+  background: '#D97706',
+  border: '#22C55E',
+  color: '#ffffff',
+  muted: 'rgba(255,255,255,0.82)',
+};
 
 function PersonHandles() {
   const hiddenHandle = { background: 'transparent', border: 'none' };
@@ -60,68 +75,68 @@ const directRelationStyles: Record<NonNullable<PersonNodeData['directRelation']>
     muted: '#4b5563',
   },
   parent: {
-    background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-    border: '#38bdf8',
+    background: DIRECT_FAMILY_RELATION_COLORS.pais.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
   sibling: {
-    background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-    border: '#38bdf8',
+    background: DIRECT_FAMILY_RELATION_COLORS.irmaos.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
   child: {
-    background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-    border: '#38bdf8',
+    background: DIRECT_FAMILY_RELATION_COLORS.filhos.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
   spouse: {
-    background: 'linear-gradient(135deg, #f43f5e 0%, #be123c 100%)',
-    border: '#fda4af',
+    background: DIRECT_FAMILY_RELATION_COLORS.conjuge.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
   grandparent: {
-    background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
-    border: '#a78bfa',
+    background: DIRECT_FAMILY_RELATION_COLORS.avos.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
   greatGrandparent: {
-    background: 'linear-gradient(135deg, #fb923c 0%, #f97316 100%)',
-    border: '#fdba74',
+    background: DIRECT_FAMILY_RELATION_COLORS.bisavos.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
   greatGreatGrandparent: {
-    background: 'linear-gradient(135deg, #f87171 0%, #dc2626 100%)',
-    border: '#fca5a5',
+    background: DIRECT_FAMILY_RELATION_COLORS.tataravos.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
   uncleAunt: {
-    background: 'linear-gradient(135deg, #f87171 0%, #dc2626 100%)',
-    border: '#fca5a5',
+    background: DIRECT_FAMILY_RELATION_COLORS.tios.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
   cousin: {
-    background: 'linear-gradient(135deg, #fde047 0%, #facc15 100%)',
-    border: '#fef08a',
-    color: '#1f2937',
-    muted: '#374151',
+    background: DIRECT_FAMILY_RELATION_COLORS.primos.background,
+    border: '#22C55E',
+    color: '#ffffff',
+    muted: 'rgba(255,255,255,0.82)',
   },
   nephewNiece: {
-    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-    border: '#86efac',
+    background: DIRECT_FAMILY_RELATION_COLORS.sobrinhos.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
   grandchild: {
-    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-    border: '#86efac',
+    background: DIRECT_FAMILY_RELATION_COLORS.netos.background,
+    border: '#22C55E',
     color: '#ffffff',
     muted: 'rgba(255,255,255,0.82)',
   },
@@ -345,14 +360,10 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
   );
 
   if (directRelation) {
-    const style = isPet
-      ? {
-          background: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)',
-          border: '#fde68a',
-          color: '#ffffff',
-          muted: 'rgba(255,255,255,0.82)',
-        }
-      : directRelationStyles[directRelation];
+    const style = isPet ? DIRECT_FAMILY_PET_STYLE : directRelationStyles[directRelation];
+    const directBorderColor = isFalecido
+      ? DIRECT_FAMILY_STATUS_BORDER_COLORS.deceased
+      : DIRECT_FAMILY_STATUS_BORDER_COLORS.alive;
     const isCentralDirectNode = directRelation === 'central';
     const cardWidth = isCentralDirectNode ? DIRECT_FAMILY_TOKENS.CENTRAL_WIDTH : DIRECT_FAMILY_TOKENS.CARD_WIDTH;
     const cardHeight = isCentralDirectNode ? DIRECT_FAMILY_TOKENS.CENTRAL_HEIGHT : DIRECT_FAMILY_TOKENS.CARD_HEIGHT;
@@ -372,7 +383,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
       <div className="relative" ref={menuRef}>
         <div
           className={[
-            'cursor-pointer rounded-lg border-2 shadow-lg transition-all hover:shadow-xl',
+            'cursor-pointer rounded-lg border-[3px] shadow-lg transition-all hover:shadow-xl',
             isCentralDirectNode
               ? 'flex flex-col items-center justify-start px-10 py-10 text-center'
               : 'flex items-center gap-3 px-3 py-2.5',
@@ -385,7 +396,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
             minHeight: cardHeight,
             height: cardHeight,
             background: style.background,
-            borderColor: style.border,
+            borderColor: directBorderColor,
             color: style.color,
           }}
         >

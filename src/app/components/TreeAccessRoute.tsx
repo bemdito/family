@@ -69,7 +69,7 @@ export function TreeAccessRoute({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [loading, user]);
+  }, [loading, user?.id, user?.last_sign_in_at]);
 
   if (loading || checking) {
     return <AccessLoading />;

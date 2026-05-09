@@ -71,9 +71,9 @@ const FRAME_LEFT = 10;
 const FRAME_RIGHT = 3210;
 const FRAME_TOP = 10;
 const FRAME_BOTTOM = 2190;
-const TITLE_TOP = FRAME_TOP + 24;
+const TITLE_TOP = FRAME_TOP + 20;
 const TITLE_WIDTH = 1540;
-const TITLE_RESERVED_HEIGHT = 120;
+const TITLE_RESERVED_HEIGHT = 146;
 const VIEW_CENTER_X = (FRAME_LEFT + FRAME_RIGHT) / 2;
 const VIEW_CENTER_Y = (FRAME_TOP + FRAME_BOTTOM) / 2;
 
@@ -341,13 +341,14 @@ function addLabel(
   label: string,
   centerX: number,
   y: number,
-  variant: 'group' | 'title' = 'group'
+  variant: 'group' | 'title' = 'group',
+  subtitle?: string
 ) {
   const width = labelWidth(label, variant);
   nodes.push({
     id,
     type: 'directFamilyLabelNode',
-    data: { label, width, variant },
+    data: { label, subtitle, width, variant },
     position: finitePosition(centerX - width / 2, y),
     draggable: false,
     selectable: false,
@@ -777,7 +778,15 @@ function addAncestorSpouseEdges(
 
 function addTitle(nodes: Node[], centralPersonName: string) {
   const firstName = centralPersonName.trim().split(/\s+/)[0] || centralPersonName;
-  addLabel(nodes, 'direct-title', `Linha Genealógica de ${firstName}`, VIEW_CENTER_X, TITLE_TOP, 'title');
+  addLabel(
+    nodes,
+    'direct-title',
+    `Linha Genealógica de ${firstName}`,
+    VIEW_CENTER_X,
+    TITLE_TOP,
+    'title',
+    'Use zoom, arraste a árvore e clique nas pessoas para abrir detalhes.'
+  );
 }
 
 function addLegend(nodes: Node[]) {

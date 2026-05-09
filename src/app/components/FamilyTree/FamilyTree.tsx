@@ -2,6 +2,7 @@ import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import ReactFlow, {
   EdgeTypes,
   Controls,
+  ControlButton,
   Background,
   MiniMap,
   useNodesState,
@@ -13,6 +14,8 @@ import ReactFlow, {
   Viewport,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { FileDown, Minus, Plus, Printer } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Pessoa, Relacionamento, TipoVisualizacaoArvore } from '../../types';
 import { nodeTypes } from './nodeTypes';
@@ -253,6 +256,84 @@ function getDirectFamilyTranslateExtent(bounds: FlowBounds, padding: number): Co
     [bounds.x - padding, bounds.y - padding],
     [bounds.x + bounds.width + padding, bounds.y + bounds.height + padding],
   ];
+}
+
+function getExportableFlowElement(container: HTMLDivElement | null) {
+  return container?.querySelector('.react-flow') as HTMLElement | null;
+}
+
+async function captureVisibleTree(container: HTMLDivElement | null) {
+  const element = getExportableFlowElement(container);
+  if (!element) {
+    throw new Error('Área da árvore não encontrada para exportação.');
+  }
+
+  // Loaded on demand because print/PDF export needs a bitmap of the current ReactFlow viewport.
+  const { default: html2canvas } = await import('html2canvas');
+  return html2canvas(element, {
+    backgroundColor: '#f8fafc',
+    scale: Math.min(2, window.devicePixelRatio || 1),
+    useCORS: true,
+    ignoreElements: (node) => {
+      const elementNode = node as HTMLElement;
+      return Boolean(
+        elementNode.classList?.contains('react-flow__controls') ||
+        elementNode.classList?.contains('react-flow__minimap')
+      );
+    },
+  });
+}
+
+async function printVisibleTree(container: HTMLDivElement | null) {
+  const canvas = await captureVisibleTree(container);
+  const imageUrl = canvas.toDataURL('image/png');
+  const printWindow = window.open('', '_blank');
+
+  if (!printWindow) {
+    throw new Error('O navegador bloqueou a janela de impressão.');
+  }
+
+  printWindow.document.write(`<!doctype html>
+<html>
+  <head>
+    <title>Imprimir árvore</title>
+    <style>
+      html, body { margin: 0; min-height: 100%; background: #f8fafc; }
+      body { display: flex; align-items: center; justify-content: center; }
+      img { width: 100vw; height: 100vh; object-fit: contain; display: block; }
+      @page { margin: 0; }
+      @media print {
+        html, body { width: 100%; height: 100%; }
+        img { width: 100%; height: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <img src="${imageUrl}" alt="Área visível da árvore genealógica" />
+  </body>
+</html>`);
+  printWindow.document.close();
+  printWindow.addEventListener('load', () => {
+    printWindow.focus();
+    printWindow.print();
+  }, { once: true });
+}
+
+async function saveVisibleTreePdf(container: HTMLDivElement | null) {
+  const canvas = await captureVisibleTree(container);
+  const imageUrl = canvas.toDataURL('image/png');
+  // Loaded on demand so normal tree navigation does not pay the PDF generation cost.
+  const { jsPDF } = await import('jspdf');
+  const orientation = canvas.width >= canvas.height ? 'landscape' : 'portrait';
+  const pdf = new jsPDF({
+    orientation,
+    unit: 'px',
+    format: [canvas.width, canvas.height],
+    compress: true,
+  });
+
+  pdf.addImage(imageUrl, 'PNG', 0, 0, canvas.width, canvas.height);
+  pdf.save('minha-arvore.pdf');
 }
 
 export function FamilyTree({
@@ -718,6 +799,30 @@ export function FamilyTree({
     [onPersonClick]
   );
 
+  const handleZoomIn = useCallback(() => {
+    reactFlowRef.current?.zoomIn({ duration: 160 });
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    reactFlowRef.current?.zoomOut({ duration: 160 });
+  }, []);
+
+  const handlePrint = useCallback(async () => {
+    try {
+      await printVisibleTree(containerRef.current);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível imprimir a árvore.');
+    }
+  }, []);
+
+  const handleSavePdf = useCallback(async () => {
+    try {
+      await saveVisibleTreePdf(containerRef.current);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível salvar o PDF.');
+    }
+  }, []);
+
   return (
     <div
       ref={containerRef}
@@ -761,7 +866,20 @@ export function FamilyTree({
         proOptions={{ hideAttribution: true }}
       >
         {!isDirectFamilyView && <Background />}
-        <Controls showInteractive={!isMobile} />
+        <Controls showZoom={false} showFitView={false} showInteractive={false}>
+          <ControlButton onClick={handleZoomIn} title="Aumentar Zoom" aria-label="Aumentar Zoom">
+            <Plus className="h-4 w-4" />
+          </ControlButton>
+          <ControlButton onClick={handleZoomOut} title="Diminuir Zoom" aria-label="Diminuir Zoom">
+            <Minus className="h-4 w-4" />
+          </ControlButton>
+          <ControlButton onClick={handlePrint} title="Imprimir" aria-label="Imprimir">
+            <Printer className="h-4 w-4" />
+          </ControlButton>
+          <ControlButton onClick={handleSavePdf} title="Salvar PDF" aria-label="Salvar PDF">
+            <FileDown className="h-4 w-4" />
+          </ControlButton>
+        </Controls>
         {!isMobile && !isDirectFamilyView && (
           <MiniMap
             nodeColor={(node) => {

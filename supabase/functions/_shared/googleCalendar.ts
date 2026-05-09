@@ -144,7 +144,8 @@ export async function refreshGoogleAccessToken(connection: GoogleCalendarConnect
     throw new Error(payload.error_description || payload.error || "Falha ao renovar token do Google.");
   }
 
-  const expiresAt = new Date(Date.now() + Number(payload.expires_in ?? 3600) * 1000).toISOString();
+  const nextExpiresAt = new Date(Date.now() + Number(payload.expires_in ?? 3600) * 1000).toISOString();
+
   const supabase = getServiceClient();
   const { data, error } = await supabase
     .from("google_calendar_connections")
@@ -152,7 +153,7 @@ export async function refreshGoogleAccessToken(connection: GoogleCalendarConnect
       access_token: payload.access_token,
       token_type: payload.token_type ?? connection.token_type ?? "Bearer",
       scope: payload.scope ?? connection.scope,
-      expires_at: expiresAt,
+      expires_at: nextExpiresAt,
       ativo: true,
     })
     .eq("id", connection.id)

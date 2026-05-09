@@ -56,6 +56,11 @@ import {
   MarriageNodeDetails,
 } from '../components/FamilyTree/types';
 import { FAMILY_TREE_COLORS, hasDeathDate } from '../components/FamilyTree/visualTokens';
+import {
+  DIRECT_FAMILY_LEGEND_BACKGROUNDS,
+  DIRECT_FAMILY_RELATION_COLORS,
+  DIRECT_FAMILY_STATUS_BORDER_COLORS,
+} from '../components/FamilyTree/directFamilyColors';
 import { useAuth } from '../contexts/AuthContext';
 import { getMemberProfile, getPrimaryLinkedPerson, MemberProfile } from '../services/memberProfileService';
 import { listarNotificacoes } from '../services/userEngagementService';
@@ -96,6 +101,10 @@ const AI_QUESTION_EXAMPLES = [
 const AI_QUESTION_PLACEHOLDER = `Pergunte, por exemplo:\n${AI_QUESTION_EXAMPLES.join('\n')}`;
 
 const AI_ENDPOINT = '/api/ai';
+let homeTreeDataCache: {
+  pessoas: Pessoa[];
+  relacionamentos: Relacionamento[];
+} | null = null;
 
 const CURIOSITY_TOPIC_OPTIONS = [
   'Meu parentesco',
@@ -117,13 +126,13 @@ export function Home() {
   const [selectedPersonId, setSelectedPersonId] = useState<string | undefined>();
   const [linkedPersonId, setLinkedPersonId] = useState<string | undefined>();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
-  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
-  const [relacionamentos, setRelacionamentos] = useState<Relacionamento[]>([]);
+  const [pessoas, setPessoas] = useState<Pessoa[]>(() => homeTreeDataCache?.pessoas ?? []);
+  const [relacionamentos, setRelacionamentos] = useState<Relacionamento[]>(() => homeTreeDataCache?.relacionamentos ?? []);
   const [pessoasFiltradas, setPessoasFiltradas] = useState<Pessoa[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [treeLayoutRevision, setTreeLayoutRevision] = useState(0);
   const [legendOpen, setLegendOpen] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !homeTreeDataCache);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<TipoVisualizacaoArvore>(() =>
@@ -226,6 +235,16 @@ export function Home() {
   }, [activeGeneration]);
 
   useEffect(() => {
+    if (homeTreeDataCache) {
+      setPessoas(homeTreeDataCache.pessoas);
+      setRelacionamentos(homeTreeDataCache.relacionamentos);
+      setIsLoading(false);
+      setLoadError(null);
+      return;
+    }
+
+    let cancelled = false;
+
     const loadData = async () => {
       try {
         setIsLoading(true);
@@ -243,8 +262,7 @@ export function Home() {
           ? relacionamentosResult.value
           : [];
 
-        setPessoas(Array.isArray(pessoasData) ? pessoasData : []);
-        setRelacionamentos(Array.isArray(relacionamentosData) ? relacionamentosData : []);
+        if (cancelled) return;
 
         const errors = [
           pessoasResult.status === 'rejected' ? pessoasResult.reason : null,
@@ -264,21 +282,39 @@ export function Home() {
           return;
         }
 
+        const nextPessoas = Array.isArray(pessoasData) ? pessoasData : [];
+        const nextRelacionamentos = Array.isArray(relacionamentosData) ? relacionamentosData : [];
+
+        homeTreeDataCache = {
+          pessoas: nextPessoas,
+          relacionamentos: nextRelacionamentos,
+        };
+
+        setPessoas(nextPessoas);
+        setRelacionamentos(nextRelacionamentos);
+
         if (relacionamentosData.length === 0) {
           console.warn('[Supabase] Tabela sem dados: relacionamentos não retornou registros.');
         }
       } catch (error) {
+        if (cancelled) return;
         const message = error instanceof Error ? error.message : 'Erro desconhecido ao carregar dados.';
         console.error('Erro ao carregar dados da árvore:', error);
         setLoadError(message);
         setPessoas([]);
         setRelacionamentos([]);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
     loadData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -302,7 +338,7 @@ export function Home() {
     };
 
     loadLinkedPerson();
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (selectedCuriosityPersonId || pessoas.length === 0) return;
@@ -333,7 +369,7 @@ export function Home() {
     };
 
     loadProfile();
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     const performSearch = async () => {
@@ -715,7 +751,14 @@ export function Home() {
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap">
             <div className="w-[170px] shrink-0">
               <Select value={viewMode} onValueChange={(value) => handleViewModeChange(value as TipoVisualizacaoArvore)}>
-                <SelectTrigger className="h-9 rounded-md border border-gray-300 bg-white px-3 shadow-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-offset-2">
+                <SelectTrigger
+                  className={[
+                    'h-9 rounded-md border px-3 shadow-none focus-visible:ring-2 focus-visible:ring-offset-2',
+                    viewMode === 'familiares-diretos'
+                      ? 'border-gray-700 bg-gray-800 text-white hover:bg-gray-700 [&_svg]:text-white'
+                      : 'border-gray-300 bg-white hover:bg-gray-50',
+                  ].join(' ')}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -858,7 +901,7 @@ export function Home() {
         </section>
       )}
 
-      <main className="flex min-h-0 flex-1 overflow-hidden">
+      <main className="relative flex min-h-0 flex-1 overflow-hidden">
         {!isMobile && (
           <aside
             className={[
@@ -866,30 +909,8 @@ export function Home() {
               sidebarOpen ? 'w-80 p-4' : 'w-14 p-2',
             ].join(' ')}
           >
-            <div className={sidebarOpen ? 'mb-4 flex h-9 items-center justify-between gap-3' : 'flex justify-center'}>
-              {sidebarOpen && (
-                <div className="min-w-0 flex-1 leading-tight">
-                  <p className="truncate text-xs text-gray-600">
-                    Use zoom, arraste a árvore
-                  </p>
-                  <p className="truncate text-xs text-gray-600">
-                    e clique nas pessoas para abrir detalhes.
-                  </p>
-                </div>
-              )}
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setSidebarOpen((prev) => !prev)}
-                title={sidebarOpen ? 'Ocultar painel lateral' : 'Exibir painel lateral'}
-                aria-label={sidebarOpen ? 'Ocultar painel lateral' : 'Exibir painel lateral'}
-              >
-                {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              </Button>
-            </div>
-
             {sidebarOpen && (
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
                 {viewMode === 'familiares-diretos' && (
                   <DirectRelationKpiGrid
                     filters={directRelativeFilters}
@@ -904,9 +925,25 @@ export function Home() {
                   filters={personFilters}
                   onToggle={togglePersonFilter}
                 />
+
+                <FamilyTreeLegend />
               </div>
             )}
           </aside>
+        )}
+
+        {!isMobile && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="absolute top-4 z-30 h-9 w-9 bg-white shadow-sm"
+            style={{ left: sidebarOpen ? 332 : 68 }}
+            onClick={() => setSidebarOpen((prev) => !prev)}
+            title={sidebarOpen ? 'Ocultar painel lateral' : 'Exibir painel lateral'}
+            aria-label={sidebarOpen ? 'Ocultar painel lateral' : 'Exibir painel lateral'}
+          >
+            {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </Button>
         )}
 
         <section className="relative min-w-0 w-0 flex-1 overflow-hidden bg-gray-100">
@@ -1563,13 +1600,17 @@ function LifeStatusKpiGrid({
       key: 'vivos' as const,
       label: 'Vivos',
       value: vivos,
-      className: 'border-emerald-300 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white',
+      background: '#F0FDF4',
+      color: '#166534',
+      borderColor: '#BBF7D0',
     },
     {
       key: 'falecidos' as const,
       label: 'Falecidos',
       value: falecidos,
-      className: 'border-slate-300 bg-gradient-to-br from-slate-500 to-slate-700 text-white',
+      background: '#F8FAFC',
+      color: '#334155',
+      borderColor: '#CBD5E1',
     },
   ];
 
@@ -1587,10 +1628,14 @@ function LifeStatusKpiGrid({
               onClick={() => onToggle(item.key)}
               className={[
                 'min-h-[54px] rounded-lg border p-2 text-left shadow-sm transition',
-                item.className,
                 active ? 'opacity-100' : 'grayscale opacity-45',
                 'hover:-translate-y-0.5 hover:shadow-md',
               ].join(' ')}
+              style={{
+                background: item.background,
+                borderColor: item.borderColor,
+                color: item.color,
+              }}
               title={active ? `Ocultar ${item.label}` : `Mostrar ${item.label}`}
             >
               <span className="block text-xs font-semibold">{item.label}</span>
@@ -1739,19 +1784,19 @@ function FilterButton({
 const DIRECT_RELATIVE_FILTER_OPTIONS: Array<{
   key: DirectRelativeGroup;
   label: string;
-  className: string;
+  colorKey: keyof typeof DIRECT_FAMILY_RELATION_COLORS;
 }> = [
-  { key: 'pais', label: 'Pais', className: 'border-blue-300 bg-gradient-to-br from-blue-500 to-blue-700 text-white' },
-  { key: 'avos', label: 'Avós', className: 'border-violet-300 bg-gradient-to-br from-violet-500 to-violet-700 text-white' },
-  { key: 'bisavos', label: 'Bisavós', className: 'border-orange-300 bg-gradient-to-br from-orange-400 to-orange-600 text-white' },
-  { key: 'tataravos', label: 'Tataravós', className: 'border-red-300 bg-gradient-to-br from-red-400 to-red-600 text-white' },
-  { key: 'conjuge', label: 'Cônjuge', className: 'border-fuchsia-300 bg-gradient-to-br from-fuchsia-500 to-fuchsia-700 text-white' },
-  { key: 'filhos', label: 'Filhos', className: 'border-emerald-300 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white' },
-  { key: 'netos', label: 'Netos', className: 'border-green-300 bg-gradient-to-br from-green-500 to-green-700 text-white' },
-  { key: 'irmaos', label: 'Irmãos', className: 'border-sky-300 bg-gradient-to-br from-sky-500 to-sky-700 text-white' },
-  { key: 'sobrinhos', label: 'Sobrinhos', className: 'border-lime-300 bg-gradient-to-br from-lime-500 to-lime-700 text-white' },
-  { key: 'tios', label: 'Tios', className: 'border-rose-300 bg-gradient-to-br from-rose-500 to-rose-700 text-white' },
-  { key: 'primos', label: 'Primos', className: 'border-yellow-200 bg-gradient-to-br from-yellow-300 to-yellow-400 text-gray-900' },
+  { key: 'tataravos', label: 'Tataravós', colorKey: 'tataravos' },
+  { key: 'bisavos', label: 'Bisavós', colorKey: 'bisavos' },
+  { key: 'avos', label: 'Avós', colorKey: 'avos' },
+  { key: 'tios', label: 'Tios', colorKey: 'tios' },
+  { key: 'pais', label: 'Pais', colorKey: 'pais' },
+  { key: 'primos', label: 'Primos', colorKey: 'primos' },
+  { key: 'conjuge', label: 'Cônjuge', colorKey: 'conjuge' },
+  { key: 'irmaos', label: 'Irmãos', colorKey: 'irmaos' },
+  { key: 'filhos', label: 'Filhos', colorKey: 'filhos' },
+  { key: 'sobrinhos', label: 'Sobrinhos', colorKey: 'sobrinhos' },
+  { key: 'netos', label: 'Netos', colorKey: 'netos' },
 ];
 
 function DirectRelativeFilterGrid({
@@ -1775,6 +1820,7 @@ function DirectRelativeFilterGrid({
         const active = filters[option.key];
         const count = counts[option.key];
         const disabled = count === 0;
+        const color = DIRECT_FAMILY_RELATION_COLORS[option.colorKey];
 
         return (
           <button
@@ -1784,10 +1830,11 @@ function DirectRelativeFilterGrid({
             onClick={() => onToggle(option.key)}
             className={[
               'min-h-[54px] rounded-lg border p-2 text-left shadow-sm transition',
-              option.className,
+              'text-white',
               active ? 'opacity-100' : 'grayscale opacity-45',
               disabled ? 'cursor-not-allowed opacity-35' : 'hover:-translate-y-0.5 hover:shadow-md',
             ].join(' ')}
+            style={{ background: color.background, borderColor: color.solid }}
             title={active ? `Ocultar ${option.label}` : `Mostrar ${option.label}`}
           >
             <span className="block text-xs font-semibold">{option.label}</span>
@@ -1800,13 +1847,13 @@ function DirectRelativeFilterGrid({
 }
 
 function FamilyTreeLegend({ compact = false }: { compact?: boolean }) {
-  const items = [
+  const borderItems = [
     {
       label: 'Pessoas vivas',
       sample: (
         <span
-          className="h-5 w-9 rounded-md border-2 bg-white"
-          style={{ borderColor: FAMILY_TREE_COLORS.CARD_BORDER_ALIVE }}
+          className="h-5 w-10 rounded-md bg-white"
+          style={{ border: `3px solid ${DIRECT_FAMILY_STATUS_BORDER_COLORS.alive}` }}
         />
       ),
     },
@@ -1814,11 +1861,14 @@ function FamilyTreeLegend({ compact = false }: { compact?: boolean }) {
       label: 'Pessoas falecidas',
       sample: (
         <span
-          className="h-5 w-9 rounded-md border-2 bg-white"
-          style={{ borderColor: FAMILY_TREE_COLORS.CARD_BORDER_DECEASED }}
+          className="h-5 w-10 rounded-md bg-white"
+          style={{ border: `3px solid ${DIRECT_FAMILY_STATUS_BORDER_COLORS.deceased}` }}
         />
       ),
     },
+  ];
+
+  const lineItems = [
     {
       label: 'Relacionamento conjugal',
       sample: <LegendLine color={FAMILY_TREE_COLORS.EDGE_SPOUSE} />,
@@ -1833,16 +1883,49 @@ function FamilyTreeLegend({ compact = false }: { compact?: boolean }) {
     },
   ];
 
+  const backgroundItems = DIRECT_FAMILY_LEGEND_BACKGROUNDS;
+
   return (
     <section className={compact ? '' : 'rounded-lg border border-gray-200 bg-gray-50 p-3'}>
-      {!compact && <h2 className="mb-3 text-sm font-semibold text-gray-900">Legenda</h2>}
+      {!compact && <h2 className="mb-3 text-sm font-semibold text-gray-900">Legendas</h2>}
       <div className={compact ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'space-y-2'}>
-        {items.map((item) => (
+        {!compact && (
+          <p className="text-[11px] font-semibold uppercase tracking-normal text-gray-500">Bordas dos cards</p>
+        )}
+        {borderItems.map((item) => (
           <div key={item.label} className="flex min-w-0 items-center gap-2 text-[11px] text-gray-600">
             <span className="flex w-10 shrink-0 items-center justify-center">{item.sample}</span>
             <span className="truncate">{item.label}</span>
           </div>
         ))}
+        {!compact && (
+          <p className="pt-2 text-[11px] font-semibold uppercase tracking-normal text-gray-500">Linhas</p>
+        )}
+        {lineItems.map((item) => (
+          <div key={item.label} className="flex min-w-0 items-center gap-2 text-[11px] text-gray-600">
+            <span className="flex w-10 shrink-0 items-center justify-center">{item.sample}</span>
+            <span className="truncate">{item.label}</span>
+          </div>
+        ))}
+        {!compact && (
+          <>
+            <p className="pt-2 text-[11px] font-semibold uppercase tracking-normal text-gray-500">Fundos dos cards</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {backgroundItems.map((item) => (
+                <div key={item.label} className="flex min-w-0 items-center gap-1.5 text-[11px] text-gray-600">
+                  <span
+                    className="h-4 w-7 shrink-0 rounded border"
+                    style={{
+                      background: item.background,
+                      borderColor: item.label === 'Usuário Principal' ? '#E5E7EB' : item.solid,
+                    }}
+                  />
+                  <span className="leading-snug">{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
