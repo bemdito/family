@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 import { PersonAstrologyCard, PersonDataView, PersonHistoricalEventsCard } from '../components/person/PersonDataView';
 import { PersonRelationshipsView } from '../components/person/PersonRelationshipsView';
 import { useAuth } from '../contexts/AuthContext';
-import { canEditPerson, getLinkedPessoaIdForUser, isMainAdmin } from '../services/permissionService';
+import { canEditPerson, getLinkedPessoaIdForUser, isAdminUser } from '../services/permissionService';
 import { ForumEmptyState } from '../components/forum/ForumEmptyState';
 
 type ProfileRelationships = {
@@ -114,10 +114,11 @@ export function PersonProfile() {
   const [forumLoading, setForumLoading] = useState(false);
   const [favoritado, setFavoritado] = useState(false);
   const [linkedPessoaId, setLinkedPessoaId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [allPeople, setAllPeople] = useState<Pessoa[]>([]);
   const canEdit = useMemo(
-    () => canEditPerson({ currentUser: user, pessoaId: id, linkedPessoaId }),
-    [id, linkedPessoaId, user],
+    () => canEditPerson({ currentUser: user, pessoaId: id, linkedPessoaId, isAdmin }),
+    [id, linkedPessoaId, user, isAdmin],
   );
 
   useEffect(() => {
@@ -163,11 +164,19 @@ export function PersonProfile() {
     async function loadPermissionContext() {
       if (!user) {
         setLinkedPessoaId(null);
+        setIsAdmin(false);
         return;
       }
 
-      const { data } = await getLinkedPessoaIdForUser(user.id);
-      if (mounted) setLinkedPessoaId(data);
+      const [{ data }, adminResult] = await Promise.all([
+        getLinkedPessoaIdForUser(user.id),
+        isAdminUser(user),
+      ]);
+
+      if (mounted) {
+        setLinkedPessoaId(data);
+        setIsAdmin(adminResult.isAdmin);
+      }
     }
 
     loadPermissionContext();
@@ -318,7 +327,7 @@ export function PersonProfile() {
             {canEdit && (
               <Button
                 variant="outline"
-                onClick={() => navigate(isMainAdmin(user) ? `/admin/pessoas/${id}` : '/meus-dados')}
+                onClick={() => navigate(isAdmin ? `/admin/pessoas/${id}` : '/meus-dados')}
               >
                 Editar
               </Button>

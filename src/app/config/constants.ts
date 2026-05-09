@@ -5,12 +5,6 @@ export const APP_CONFIG = {
   familyName: 'Família Barros Souza',
   version: '1.0.0',
   
-  // Autenticação mock
-  mockAuth: {
-    email: 'admin@familia.com',
-    password: 'admin123'
-  },
-  
   // Configurações da árvore
   tree: {
     nodeWidth: 280,

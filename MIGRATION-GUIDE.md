@@ -49,17 +49,14 @@ pessoas (1) ─── (N) arquivos_historicos
 
 ### 2️⃣ Executar a Migração dos Dados
 
-**Opção A: Via Interface Admin (Recomendado)**
+**Opção A: Via rotina server-side/transacional (Recomendado)**
 
-1. Faça login no painel administrativo: `/admin/login`
-   - Senha padrão: `admin123`
-2. No dashboard, clique em **"Migrar para Banco"**
-3. Leia atentamente o aviso (irá apagar dados existentes!)
-4. Clique em **"Executar Migração"**
-5. Aguarde a conclusão (pode levar alguns segundos)
-6. Verifique os stats: deve mostrar 62 pessoas criadas
+1. Faça backup do banco no ambiente correto
+2. Execute uma rotina server-side/RPC revisada em ambiente local ou staging
+3. Garanta que a rotina rode em transação e valide admin via `profiles.role = 'admin'`
+4. Não execute deletes/inserts destrutivos a partir do frontend
 
-**Opção B: Via API**
+**Opção B: Via API legado**
 
 ```bash
 curl -X POST \

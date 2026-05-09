@@ -15,8 +15,10 @@ CREATE OR REPLACE FUNCTION public.forum_is_admin()
 RETURNS boolean
 LANGUAGE sql
 STABLE
+SECURITY DEFINER
+SET search_path = public
 AS $$
-  SELECT COALESCE(auth.email(), '') = 'tuliust@gmail.com';
+  SELECT public.is_admin_user(auth.uid());
 $$;
 
 CREATE OR REPLACE FUNCTION public.forum_update_updated_at()

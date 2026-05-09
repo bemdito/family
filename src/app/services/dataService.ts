@@ -604,6 +604,10 @@ export async function buscarPessoas(termo: string): Promise<Pessoa[]> {
 // MIGRAÇÃO DE DADOS
 // =====================================================
 
+/**
+ * @deprecated Operacao destrutiva e nao transacional. Nao chame pelo frontend.
+ * Substituir por rotina server-side/RPC transacional com validacao de admin.
+ */
 export async function migrarDados(seed: any[]): Promise<{ success: boolean; message?: string; stats?: any }> {
   try {
     const { error: relacionamentosError } = await supabase

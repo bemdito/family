@@ -14,7 +14,7 @@ import {
   listarCategoriasForum,
   obterTopicoForumPorId,
 } from '../../services/forumService';
-import { isMainAdmin } from '../../services/permissionService';
+import { isAdminUser } from '../../services/permissionService';
 import { ForumCategoria, ForumTopico, ForumTopicoTipo, Pessoa } from '../../types';
 
 const TIPO_OPTIONS: Array<{ value: ForumTopicoTipo; label: string }> = [
@@ -49,11 +49,32 @@ export function ForumEditarTopico() {
   const [pessoaRelacionadaId, setPessoaRelacionadaId] = useState('');
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [admin, setAdmin] = useState(false);
 
   const podeEditar = useMemo(
-    () => Boolean(user && topico && (topico.autor_id === user.id || isMainAdmin(user))),
-    [user, topico]
+    () => Boolean(user && topico && (topico.autor_id === user.id || admin)),
+    [user, topico, admin]
   );
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function carregarPermissaoAdmin() {
+      if (!user) {
+        setAdmin(false);
+        return;
+      }
+
+      const result = await isAdminUser(user);
+      if (mounted) setAdmin(result.isAdmin);
+    }
+
+    carregarPermissaoAdmin();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   useEffect(() => {
     let mounted = true;

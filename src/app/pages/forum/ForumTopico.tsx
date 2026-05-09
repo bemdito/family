@@ -37,7 +37,7 @@ import {
   reagirAoConteudo,
   ResumoReacoesForum,
 } from '../../services/forumService';
-import { isMainAdmin } from '../../services/permissionService';
+import { isAdminUser } from '../../services/permissionService';
 import {
   ForumAlvoTipo,
   ForumComentario,
@@ -139,8 +139,8 @@ export function ForumTopico() {
   const [loading, setLoading] = useState(true);
   const [enviandoResposta, setEnviandoResposta] = useState(false);
   const [erro, setErro] = useState('');
+  const [admin, setAdmin] = useState(false);
 
-  const admin = isMainAdmin(user);
   const podeEditarTopico = useMemo(
     () => Boolean(user && topico && (topico.autor_id === user.id || admin)),
     [user, topico, admin]
@@ -181,6 +181,28 @@ export function ForumTopico() {
     carregar();
     if (id) incrementarVisualizacaoTopico(id);
   }, [id]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function carregarPermissaoAdmin() {
+      if (!user) {
+        setAdmin(false);
+        return;
+      }
+
+      const result = await isAdminUser(user);
+      if (!mounted) return;
+
+      setAdmin(result.isAdmin);
+    }
+
+    carregarPermissaoAdmin();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   async function responder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -2,13 +2,6 @@ import { User } from '@supabase/supabase-js';
 import { getPrimaryLinkedPerson } from './memberProfileService';
 import { supabase } from '../lib/supabaseClient';
 
-export const MAIN_ADMIN_EMAIL = 'tuliust@gmail.com';
-
-export function isMainAdmin(user?: User | null) {
-  // TODO: remover fallback após garantir profiles.role = 'admin' em produção.
-  return user?.email?.trim().toLowerCase() === MAIN_ADMIN_EMAIL;
-}
-
 export async function isAdminUser(user?: User | null) {
   if (!user) return { isAdmin: false, error: undefined as string | undefined };
 
@@ -18,10 +11,6 @@ export async function isAdminUser(user?: User | null) {
     return { isAdmin: Boolean(data), error: undefined };
   }
 
-  if (isMainAdmin(user)) {
-    return { isAdmin: true, error: error.message };
-  }
-
   return { isAdmin: false, error: error.message };
 }
 
@@ -29,11 +18,12 @@ export function canEditPerson(params: {
   currentUser?: User | null;
   pessoaId?: string | null;
   linkedPessoaId?: string | null;
+  isAdmin?: boolean;
 }) {
-  const { currentUser, pessoaId, linkedPessoaId } = params;
+  const { currentUser, pessoaId, linkedPessoaId, isAdmin = false } = params;
   if (!currentUser || !pessoaId) return false;
 
-  return isMainAdmin(currentUser) || linkedPessoaId === pessoaId;
+  return isAdmin || linkedPessoaId === pessoaId;
 }
 
 export async function getLinkedPessoaIdForUser(userId: string) {
