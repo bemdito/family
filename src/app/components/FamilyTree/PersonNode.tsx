@@ -335,8 +335,8 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
           className={[
             'cursor-pointer rounded-lg border-[3px] shadow-lg transition-all hover:shadow-xl',
             isCentralDirectNode
-              ? 'flex flex-col items-center justify-start px-10 py-10 text-center'
-              : 'flex items-center gap-3 px-3 py-2.5',
+              ? 'flex flex-col items-center justify-start px-12 py-11 text-center'
+              : 'flex items-center gap-3 px-4 py-3',
             isSelected ? 'ring-2 ring-blue-300' : '',
           ].join(' ')}
           onClick={handleClick}
@@ -360,16 +360,16 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
             style={{ width: avatarSize, height: avatarSize }}
           >
             {avatarContent(
-              isCentralDirectNode ? 'h-[300px] w-[300px]' : 'h-[58px] w-[58px]',
-              isCentralDirectNode ? 'h-28 w-28 text-slate-700' : 'h-6 w-6 text-slate-700'
+              isCentralDirectNode ? 'h-[320px] w-[320px]' : 'h-[66px] w-[66px]',
+              isCentralDirectNode ? 'h-28 w-28 text-slate-700' : 'h-7 w-7 text-slate-700'
             )}
           </div>
 
-          <div className={isCentralDirectNode ? 'mt-8 min-w-0 max-w-full' : 'min-w-0 flex-1'}>
+          <div className={isCentralDirectNode ? 'mt-9 min-w-0 max-w-full' : 'min-w-0 flex-1'}>
             <h3
               className={[
                 'font-bold leading-tight',
-                isCentralDirectNode ? 'whitespace-normal break-words text-3xl' : 'truncate text-[16px]',
+                isCentralDirectNode ? 'whitespace-normal break-words text-4xl' : 'truncate text-[17px]',
               ].join(' ')}
               title={pessoa.nome_completo}
             >
@@ -377,7 +377,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
             </h3>
             {isCentralDirectNode ? (
               centralDetails.length > 0 && (
-                <div className="mt-5 space-y-2 text-lg leading-snug" style={{ color: style.muted }}>
+                <div className="mt-5 space-y-2 text-xl leading-snug" style={{ color: style.muted }}>
                   {centralDetails.map((detail) => (
                     <p key={detail} className="whitespace-normal break-words">
                       {detail}
@@ -389,7 +389,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
               <p
                 className={[
                   'truncate leading-tight',
-                  'mt-0.5 text-[13px]',
+                  'mt-0.5 text-[14px]',
                 ].join(' ')}
                 style={{ color: style.muted }}
                 title={directSecondaryText}
