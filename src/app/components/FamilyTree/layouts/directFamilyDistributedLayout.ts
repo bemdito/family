@@ -121,7 +121,7 @@ const PATERNAL_GROUP_LANE_WIDTH = Math.min(820, SIDE_LANE_WIDTH);
 const MATERNAL_GROUP_LANE_WIDTH = Math.min(820, SIDE_LANE_WIDTH);
 const PATERNAL_CENTER_X = FRAME_LEFT + (CENTRAL_LEFT_BOUNDARY - FRAME_LEFT) / 2;
 const MATERNAL_CENTER_X = CENTRAL_RIGHT_BOUNDARY + (FRAME_RIGHT - CENTRAL_RIGHT_BOUNDARY) / 2;
-const LOWER_GROUP_Y = CENTRAL_Y + CENTRAL_HEIGHT + 24;
+const LOWER_GROUP_Y = CENTRAL_Y + CENTRAL_HEIGHT + 80;
 const LOWER_LANE_WIDTH = 760;
 const LOWER_GROUP_GAP = 18;
 const LOWER_LEFT_GROUP_CENTER_X = FATHER_GROUP_CENTER_X;
@@ -344,7 +344,7 @@ function finitePosition(x: number, y: number) {
 
 function labelWidth(label: string, variant: 'group' | 'title' = 'group') {
   if (variant === 'title') return TITLE_WIDTH;
-  return Math.min(280, Math.max(130, label.length * 9 + 34));
+  return Math.min(420, Math.max(220, label.length * 11 + 40));
 }
 
 function addLabel(

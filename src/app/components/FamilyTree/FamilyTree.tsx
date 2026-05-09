@@ -884,8 +884,8 @@ export function FamilyTree({
         translateExtent={directFamilyTranslateExtent}
         preventScrolling={isDirectFamilyView ? true : undefined}
         defaultViewport={{
-          x: 0,
-          y: 0,
+          x: isDirectFamilyView && directFamilyViewport ? directFamilyViewport.x : 0,
+          y: isDirectFamilyView && directFamilyViewport ? directFamilyViewport.y : 0,
           zoom: isDirectFamilyView
             ? directFamilyFittedZoom
             : (isMobile ? 0.72 : 0.8),

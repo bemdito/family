@@ -369,7 +369,9 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
             <h3
               className={[
                 'font-bold leading-tight',
-                isCentralDirectNode ? 'whitespace-normal break-words text-4xl' : 'truncate text-[19px]',
+                isCentralDirectNode
+                  ? 'whitespace-normal break-words text-4xl'
+                  : 'overflow-hidden text-ellipsis text-[18px] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]',
               ].join(' ')}
               title={pessoa.nome_completo}
             >
@@ -389,7 +391,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
               <p
                 className={[
                   'truncate leading-tight',
-                  'mt-0.5 text-[15px]',
+                  'mt-0.5 text-[13px]',
                 ].join(' ')}
                 style={{ color: style.muted }}
                 title={directSecondaryText}
