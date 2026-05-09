@@ -6,12 +6,15 @@ import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  listarArquivosHistoricosPorPessoa,
+  substituirArquivosHistoricosDaPessoa,
+} from '../services/arquivosHistoricosService';
 import { obterRelacionamentosDaPessoa } from '../services/dataService';
 import {
   confirmOwnLinkedPersonData,
   getPrimaryLinkedPersonWithPessoa,
   resolveFirstAccessLinkForUser,
-  updateOwnLinkedPerson,
   UserPersonLinkRecord,
 } from '../services/memberProfileService';
 import { ArquivoHistorico, Pessoa } from '../types';
@@ -108,9 +111,10 @@ export function MeusVinculos() {
       }
 
       setLink(data);
-      setArchives(data?.pessoa?.arquivos_historicos ?? []);
 
       if (data?.pessoa?.id) {
+        const nextArchives = await listarArquivosHistoricosPorPessoa(data.pessoa.id);
+        if (mounted) setArchives(nextArchives);
         await reloadRelationships(data.pessoa.id);
       }
 
@@ -132,13 +136,11 @@ export function MeusVinculos() {
 
     setFinishing(true);
 
-    const { error: archiveError } = await updateOwnLinkedPerson(pessoa.id, {
-      arquivos_historicos: archives,
-    });
-
-    if (archiveError) {
+    try {
+      await substituirArquivosHistoricosDaPessoa(pessoa.id, archives);
+    } catch (error) {
       setFinishing(false);
-      toast.error(archiveError);
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar arquivos históricos.');
       return;
     }
 

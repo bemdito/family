@@ -42,10 +42,13 @@ export type ForumAlvoTipo = 'topico' | 'resposta' | 'comentario';
 
 export interface ArquivoHistorico {
   id: string;
+  pessoa_id?: string;
   tipo: 'imagem' | 'pdf';
   url: string;
   titulo: string;
   descricao?: string;
+  ano?: string;
+  ordem?: number;
 }
 
 export interface Pessoa {

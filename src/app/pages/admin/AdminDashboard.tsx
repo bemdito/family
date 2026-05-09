@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { useAuth } from '../../contexts/AuthContext';
 import { obterTodasPessoas, obterTodosRelacionamentos } from '../../services/dataService';
 import {
   Users,
@@ -27,6 +28,7 @@ type Relacionamento = {
 
 export function AdminDashboard() {
   const navigate = useNavigate();
+  const { signOut } = useAuth();
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [relacionamentos, setRelacionamentos] = useState<Relacionamento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +55,10 @@ export function AdminDashboard() {
     loadData();
   }, []);
 
-  
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/admin/login');
+  };
 
   const stats = {
     totalPessoas: pessoas.length,
@@ -115,10 +120,7 @@ export function AdminDashboard() {
 
             <Button
               variant="ghost"
-              onClick={() => {
-                localStorage.removeItem('isAdmin');
-                navigate('/admin/login');
-              }}
+              onClick={handleSignOut}
             >
               Sair
             </Button>

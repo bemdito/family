@@ -1,6 +1,7 @@
+import React from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
-import { isMainAdmin } from '../services/permissionService';
+import { isAdminUser } from '../services/permissionService';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -8,8 +9,38 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
+  const [adminLoading, setAdminLoading] = React.useState(true);
+  const [isAdmin, setIsAdmin] = React.useState(false);
 
-  if (loading) {
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function checkAdmin() {
+      if (loading) return;
+
+      if (!user) {
+        setIsAdmin(false);
+        setAdminLoading(false);
+        return;
+      }
+
+      setAdminLoading(true);
+      const result = await isAdminUser(user);
+
+      if (!mounted) return;
+
+      setIsAdmin(result.isAdmin);
+      setAdminLoading(false);
+    }
+
+    checkAdmin();
+
+    return () => {
+      mounted = false;
+    };
+  }, [loading, user]);
+
+  if (loading || adminLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -20,7 +51,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  if (!isMainAdmin(user)) {
+  if (!isAdmin) {
     return <Navigate to="/entrar" replace />;
   }
 

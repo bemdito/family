@@ -76,7 +76,6 @@ export type EditableOwnPersonPayload = Pick<
   | 'instagram_url'
   | 'permitir_exibir_instagram'
   | 'permitir_mensagens_whatsapp'
-  | 'arquivos_historicos'
 >;
 
 export async function ensureMemberProfile(userId: string, payload?: { nome_exibicao?: string | null; avatar_url?: string | null }) {

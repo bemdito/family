@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { obterTodosRelacionamentos, obterTodasPessoas, excluirRelacionamento } from '../../services/dataService';
+import { obterTodosRelacionamentos, obterTodasPessoas, excluirRelacionamentoComInverso } from '../../services/dataService';
 import { Relacionamento, Pessoa } from '../../types';
 import { ArrowLeft, Plus, Trash2, Heart, Users as UsersIcon } from 'lucide-react';
 
@@ -34,7 +34,7 @@ export function AdminRelacionamentos() {
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Tem certeza que deseja excluir este relacionamento?')) {
-      const success = await excluirRelacionamento(id);
+      const success = await excluirRelacionamentoComInverso(id);
       if (success) {
         await loadData();
       } else {

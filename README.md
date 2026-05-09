@@ -1,204 +1,82 @@
-# 🌳 Sistema de Árvore Genealógica
+# Sistema de Arvore Genealogica
 
-Sistema web moderno e completo para visualização e gestão de árvore genealógica familiar.
+Aplicacao React + TypeScript + Vite para arvore genealogica familiar com area de membros, painel administrativo, forum e integracao opcional com Google Calendar.
 
-![Status](https://img.shields.io/badge/status-production--ready-green)
-![React](https://img.shields.io/badge/react-18.3-blue)
-![TypeScript](https://img.shields.io/badge/typescript-5.0-blue)
+## Estado Atual
 
-## 🎯 Visão Geral
+- Frontend em React 18, React Router 7 e Tailwind CSS v4.
+- Persistencia em Supabase Postgres via `@supabase/supabase-js`.
+- Autenticacao real via Supabase Auth.
+- Regras de acesso no frontend:
+  - `TreeAccessRoute`: protege a arvore principal e direciona usuarios sem vinculo confirmado.
+  - `MemberRoute`: protege paginas de membro.
+  - `ProtectedRoute`: protege admin com verificacao de perfil admin no Supabase e fallback temporario por e-mail.
+- `supabase/migrations` e a fonte principal do schema.
+- Scripts SQL soltos existem como historico/referencia e nao devem substituir migrations.
 
-Sistema profissional de árvore genealógica com visualização interativa, gestão completa de membros e relacionamentos, suporte a múltiplas gerações e pets da família.
+## Variaveis De Ambiente
 
-### ✨ Principais Funcionalidades
+Crie `.env.local`:
 
-#### 🌍 Área Pública
-- Visualização interativa da árvore genealógica com zoom e navegação
-- Busca inteligente por nome ou localização
-- Página individual detalhada de cada pessoa
-- Legenda visual explicativa
-- Estatísticas em tempo real
-- Layout automático baseado em relacionamentos
+```env
+VITE_SUPABASE_URL=https://seu-projeto.supabase.co
+VITE_SUPABASE_ANON_KEY=sua-anon-key
+```
 
-#### 🔐 Painel Administrativo
-- Sistema de autenticação seguro
-- Dashboard com métricas e estatísticas
-- CRUD completo de pessoas
-- Gestão de relacionamentos (casamentos, filiações)
-- Importação de dados via JSON
-- Suporte a filiação biológica e adotiva
+Se usar rotinas server/API com OpenAI:
 
-## 🚀 Tecnologias
+```env
+OPENAI_API_KEY=sua-chave
+```
 
-- **React 18** + **TypeScript** - Framework e type safety
-- **React Router 7** - Navegação SPA moderna
-- **ReactFlow** - Visualização interativa da árvore
-- **Dagre** - Layout automático hierárquico
-- **Tailwind CSS v4** - Estilização moderna
-- **Lucide React** - Ícones elegantes
+Ferramentas destrutivas de admin ficam bloqueadas em producao. Para liberar em ambiente controlado:
 
-## 📦 Instalação
+```env
+VITE_ENABLE_DESTRUCTIVE_ADMIN_TOOLS=true
+```
+
+## Comandos
 
 ```bash
-# Clone o repositório
-git clone [url-do-repo]
-
-# Instale as dependências
 npm install
-
-# Execute o projeto
 npm run dev
+npm run build
 ```
 
-## 🎮 Como Usar
+## Rotas Principais
 
-### Visualizar a Árvore
-1. Acesse a página inicial (/)
-2. Explore a árvore usando zoom (scroll) e pan (arrastar)
-3. Clique em qualquer pessoa para ver detalhes completos
-4. Use a busca no topo para localizar membros específicos
+- `/entrar`: login/cadastro.
+- `/`: arvore principal protegida por `TreeAccessRoute`.
+- `/minha-arvore`, `/meus-dados`, `/meus-vinculos`, `/calendario-familiar`, `/meus-favoritos`, `/notificacoes`: area de membro.
+- `/forum`: forum familiar.
+- `/admin/login`: entrada admin.
+- `/admin`, `/admin/dashboard`: dashboard admin.
+- `/admin/pessoas`, `/admin/pessoas/nova`, `/admin/pessoas/:id/editar`: gestao de pessoas.
+- `/admin/relacionamentos`, `/admin/relacionamentos/novo`: gestao de relacionamentos.
+- `/admin/migrar-dados`: ferramenta destrutiva protegida por confirmacao e bloqueio em producao.
 
-### Acessar o Painel Admin
-1. Acesse `/admin/login`
-2. Use as credenciais de demonstração:
-   - **Email**: admin@familia.com
-   - **Senha**: admin123
-3. Navegue pelo dashboard e suas funcionalidades
+## Banco E Migrations
 
-### Adicionar Membros
-1. No painel admin, clique em "Adicionar Pessoa"
-2. Preencha os dados (apenas o nome é obrigatório)
-3. Salve e a pessoa aparecerá na árvore
+Use `supabase/migrations` como fonte da verdade. Nao aplique `database-schema.sql` como schema principal em novos ambientes.
 
-### Criar Relacionamentos
-1. Acesse "Relacionamentos" no menu admin
-2. Clique em "Adicionar Relacionamento"
-3. Selecione origem, destino e tipo
-4. O sistema cria automaticamente o relacionamento inverso
+Inclui migrations para:
 
-### Importar Dados
-1. Acesse "Importar Dados" no admin
-2. Cole um JSON no formato especificado
-3. Clique em "Importar"
-4. O sistema processa e cria todos os vínculos automaticamente
+- Tabelas core: `pessoas`, `relacionamentos`, `imagens_pessoa`, `arquivos_historicos`.
+- Perfis e vinculos: `profiles`, `user_person_links`.
+- Forum: `forum_*`.
+- Google Calendar: `google_calendar_*` e view `google_calendar_connection_status`.
+- RLS core e policies de acesso.
 
-## 📊 Dados de Exemplo
+Nao rode `supabase db push` ou migrations em producao sem revisao e backup.
 
-O sistema já vem com 62 membros da família Limeira Souza:
-- Múltiplas gerações (desde 1902)
-- Diferentes localidades (PE, BA, RN, MG, etc)
-- Relacionamentos complexos
-- Incluindo 1 pet (Populos 🐕)
-- Pessoas vivas e falecidas
+## Observacoes Operacionais
 
-## 🎨 Design e UX
+- `arquivos_historicos` e tratado como tabela relacional, nao como coluna JSON de `pessoas`.
+- Relacionamentos criados pelos fluxos admin usam service centralizado para criar/remover inversos quando possivel.
+- A ferramenta `/admin/migrar-dados` apaga dados antes de importar seed; use apenas em ambiente controlado.
 
-### Código de Cores
-- 🔵 **Azul**: Pessoas vivas
-- ⚫ **Cinza**: Pessoas falecidas
-- 🟠 **Âmbar**: Pets da família
-- 💚 **Verde**: Relacionamentos conjugais
-- ➡️ **Setas**: Filiação (sólida = sangue, tracejada = adotiva)
+## Documentacao
 
-### Componentes Principais
-- **PersonNode**: Card customizado de cada pessoa
-- **FamilyTree**: Árvore interativa com ReactFlow
-- **PersonProfile**: Página detalhada individual
-- **Dashboard Admin**: Visão geral do sistema
-
-## 🏗️ Arquitetura
-
-```
-src/app/
-├── components/       # Componentes reutilizáveis
-├── pages/           # Páginas da aplicação
-├── services/        # Lógica de negócio
-├── data/            # Dados iniciais (seed)
-├── types/           # TypeScript interfaces
-└── routes.tsx       # Configuração de rotas
-```
-
-### Fluxo de Dados
-1. Dados iniciais carregados do `seed.ts`
-2. Processados pelo `dataService`
-3. Armazenados em memória (store local)
-4. Renderizados pelo ReactFlow
-5. CRUD via funções do service
-
-## 🔐 Autenticação
-
-Atualmente usa autenticação mock (localStorage).
-
-**Para produção:** Integrar com Supabase Auth.
-
-## 📱 Responsividade
-
-- ✅ Desktop (1920px+)
-- ✅ Laptop (1366px)
-- ✅ Tablet (768px)
-- ✅ Mobile (375px+)
-
-## 🚧 Próximas Melhorias
-
-### Integrações
-- [ ] Supabase para persistência de dados
-- [ ] Supabase Auth para autenticação real
-- [ ] Supabase Storage para upload de fotos
-- [ ] PostgreSQL para banco de dados
-
-### Funcionalidades
-- [ ] Upload direto de imagens
-- [ ] Galeria de fotos por pessoa
-- [ ] Exportação para PDF
-- [ ] Importação de CSV/Excel
-- [ ] Histórico de alterações
-- [ ] Notificações
-- [ ] Compartilhamento via link
-- [ ] Modo de impressão otimizado
-- [ ] Árvore expandida/colapsada por ramo
-
-### UX/UI
-- [ ] Temas (claro/escuro)
-- [ ] Animações de transição
-- [ ] Tutorial interativo
-- [ ] Atalhos de teclado
-- [ ] Mobile: gestos avançados
-
-## 📖 Documentação Técnica
-
-Veja `ARCHITECTURE.md` para detalhes completos sobre:
-- Modelagem de dados
-- Regras de negócio
-- Decisões de arquitetura
-- Padrões de código
-
-## 🤝 Contribuindo
-
-Este é um projeto de demonstração, mas contribuições são bem-vindas!
-
-1. Fork o projeto
-2. Crie uma branch (`git checkout -b feature/MinhaFeature`)
-3. Commit suas mudanças (`git commit -m 'Adiciona MinhaFeature'`)
-4. Push para a branch (`git push origin feature/MinhaFeature`)
-5. Abra um Pull Request
-
-## 📄 Licença
-
-Este projeto é fornecido como exemplo educacional.
-
-## 🙏 Agradecimentos
-
-Desenvolvido para demonstrar:
-- Boas práticas de React/TypeScript
-- Arquitetura escalável
-- UX/UI moderna
-- Gestão de dados complexos
-- Visualização interativa de grafos
-
----
-
-**Feito com ❤️ para preservar e celebrar histórias familiares**
-
-## 📞 Contato
-
-Para dúvidas ou sugestões, abra uma issue no repositório.
+- `ARCHITECTURE.md`: arquitetura atual.
+- `DEPLOYMENT.md`: deploy e Supabase.
+- Relatorios antigos permanecem no repositorio como historico.

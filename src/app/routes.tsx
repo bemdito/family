@@ -18,6 +18,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminPessoas } from './pages/admin/AdminPessoas';
 import { AdminPessoaForm } from './pages/admin/AdminPessoaForm';
 import { AdminRelacionamentos } from './pages/admin/AdminRelacionamentos';
+import { AdminRelacionamentoForm } from './pages/admin/AdminRelacionamentoForm';
 import { AdminImportacao } from './pages/admin/AdminImportacao';
 import { AdminMigrarDados } from './pages/admin/AdminMigrarDados';
 import { AdminDiagnostico } from './pages/admin/AdminDiagnostico';
@@ -60,15 +61,15 @@ export const router = createBrowserRouter([
   },
   {
     path: '/calendario-familiar',
-    element: <CalendarioFamiliar />,
+    element: <MemberRoute><CalendarioFamiliar /></MemberRoute>,
   },
   {
     path: '/meus-favoritos',
-    element: <MeusFavoritos />,
+    element: <MemberRoute><MeusFavoritos /></MemberRoute>,
   },
   {
     path: '/notificacoes',
-    element: <CentralNotificacoes />,
+    element: <MemberRoute><CentralNotificacoes /></MemberRoute>,
   },
   {
     path: '/forum',
@@ -117,6 +118,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/relacionamentos',
     element: <ProtectedRoute><AdminRelacionamentos /></ProtectedRoute>,
+  },
+  {
+    path: '/admin/relacionamentos/novo',
+    element: <ProtectedRoute><AdminRelacionamentoForm /></ProtectedRoute>,
   },
   {
     path: '/admin/importacao',

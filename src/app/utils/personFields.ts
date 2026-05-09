@@ -30,7 +30,6 @@ export const PERSON_FIELD_LABELS = {
   humano_ou_pet: 'Tipo',
   geracao_sociologica: 'Geração sociológica',
   lado: 'Lado',
-  arquivos_historicos: 'Arquivos históricos',
 } as const;
 
 export type PersonFieldErrors = Partial<Record<keyof EditableOwnPersonPayload | 'complemento', string>>;
@@ -66,7 +65,6 @@ export function buildEditablePersonFormState(pessoa?: Pessoa | null): EditableOw
     instagram_url: pessoa?.instagram_url ?? '',
     permitir_exibir_instagram: Boolean(pessoa?.permitir_exibir_instagram),
     permitir_mensagens_whatsapp: Boolean(pessoa?.permitir_mensagens_whatsapp),
-    arquivos_historicos: pessoa?.arquivos_historicos ?? [],
   };
 }
 

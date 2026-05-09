@@ -1,4 +1,4 @@
-import { Pessoa, Relacionamento, ArquivoHistorico } from '../types';
+import { Pessoa, Relacionamento } from '../types';
 import { supabase } from '../lib/supabaseClient';
 
 type SupabaseErrorLike = {
@@ -31,7 +31,6 @@ const PESSOA_COLUMNS = [
   'permitir_mensagens_whatsapp',
   'geracao_sociologica',
   'manual_generation',
-  'arquivos_historicos',
 ] as const;
 
 const RELACIONAMENTO_COLUMNS = [
@@ -40,6 +39,11 @@ const RELACIONAMENTO_COLUMNS = [
   'tipo_relacionamento',
   'subtipo_relacionamento',
 ] as const;
+
+type RelacionamentoPayload = Omit<Relacionamento, 'id'>;
+type InverseOptions = {
+  inverseTipoForFilho?: 'pai' | 'mae';
+};
 
 function logSupabaseError(context: string, error: SupabaseErrorLike) {
   console.error(`[Supabase] ${context}: ${error.message || 'Erro desconhecido'}`, {
@@ -405,6 +409,89 @@ export async function adicionarRelacionamento(relacionamento: Omit<Relacionament
   return data ? toRelacionamento(data) : undefined;
 }
 
+export function getRelacionamentoInversoPayload(
+  relacionamento: Pick<Relacionamento, 'pessoa_origem_id' | 'pessoa_destino_id' | 'tipo_relacionamento' | 'subtipo_relacionamento'>,
+  options: InverseOptions = {}
+): RelacionamentoPayload | undefined {
+  let tipoInverso: Relacionamento['tipo_relacionamento'] | undefined;
+
+  if (relacionamento.tipo_relacionamento === 'conjuge' || relacionamento.tipo_relacionamento === 'irmao') {
+    tipoInverso = relacionamento.tipo_relacionamento;
+  }
+
+  if (relacionamento.tipo_relacionamento === 'pai' || relacionamento.tipo_relacionamento === 'mae') {
+    tipoInverso = 'filho';
+  }
+
+  if (relacionamento.tipo_relacionamento === 'filho') {
+    tipoInverso = options.inverseTipoForFilho;
+  }
+
+  if (!tipoInverso) return undefined;
+
+  return {
+    pessoa_origem_id: relacionamento.pessoa_destino_id,
+    pessoa_destino_id: relacionamento.pessoa_origem_id,
+    tipo_relacionamento: tipoInverso,
+    subtipo_relacionamento: relacionamento.subtipo_relacionamento,
+    ativo: true,
+  };
+}
+
+function hasDuplicateRelationshipError(error: SupabaseErrorLike) {
+  const message = `${error.message || ''} ${error.details || ''}`.toLowerCase();
+  return error.code === '23505' || message.includes('duplicate key') || message.includes('already exists');
+}
+
+async function buscarRelacionamentoPorPayload(
+  relacionamento: Pick<Relacionamento, 'pessoa_origem_id' | 'pessoa_destino_id' | 'tipo_relacionamento' | 'subtipo_relacionamento'>
+) {
+  let query = supabase
+    .from('relacionamentos')
+    .select('*')
+    .eq('pessoa_origem_id', relacionamento.pessoa_origem_id)
+    .eq('pessoa_destino_id', relacionamento.pessoa_destino_id)
+    .eq('tipo_relacionamento', relacionamento.tipo_relacionamento);
+
+  query = relacionamento.subtipo_relacionamento
+    ? query.eq('subtipo_relacionamento', relacionamento.subtipo_relacionamento)
+    : query.is('subtipo_relacionamento', null);
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    logSupabaseError('Erro ao buscar relacionamento existente', error);
+    return undefined;
+  }
+
+  return data ? toRelacionamento(data) : undefined;
+}
+
+export async function adicionarRelacionamentoComInverso(
+  relacionamento: RelacionamentoPayload,
+  options: InverseOptions = {}
+): Promise<Relacionamento | undefined> {
+  const principal = await adicionarRelacionamento(relacionamento);
+
+  if (!principal) {
+    return buscarRelacionamentoPorPayload(relacionamento);
+  }
+
+  const inverso = getRelacionamentoInversoPayload(principal, options);
+  if (!inverso) return principal;
+
+  const payload = pickDefined(inverso, RELACIONAMENTO_COLUMNS);
+  const { error } = await supabase
+    .from('relacionamentos')
+    .insert(payload);
+
+  if (error && !hasDuplicateRelationshipError(error)) {
+    logSupabaseError('Erro ao adicionar relacionamento inverso', error);
+  }
+
+  return principal;
+}
+
 export async function atualizarRelacionamento(id: string, relacionamento: Partial<Relacionamento>): Promise<Relacionamento | undefined> {
   const payload = pickDefined(relacionamento, RELACIONAMENTO_COLUMNS);
   const { data, error } = await supabase
@@ -437,6 +524,61 @@ export async function deletarRelacionamento(id: string): Promise<boolean> {
 }
 
 export const excluirRelacionamento = deletarRelacionamento;
+
+export async function encontrarRelacionamentoInverso(relacionamento: Relacionamento): Promise<Relacionamento | undefined> {
+  const candidatos = await obterTodosRelacionamentos();
+  return candidatos.find((candidate) => {
+    const samePair =
+      candidate.pessoa_origem_id === relacionamento.pessoa_destino_id &&
+      candidate.pessoa_destino_id === relacionamento.pessoa_origem_id &&
+      candidate.subtipo_relacionamento === relacionamento.subtipo_relacionamento;
+
+    if (!samePair) return false;
+
+    if (relacionamento.tipo_relacionamento === 'conjuge' || relacionamento.tipo_relacionamento === 'irmao') {
+      return candidate.tipo_relacionamento === relacionamento.tipo_relacionamento;
+    }
+
+    if (relacionamento.tipo_relacionamento === 'pai' || relacionamento.tipo_relacionamento === 'mae') {
+      return candidate.tipo_relacionamento === 'filho';
+    }
+
+    if (relacionamento.tipo_relacionamento === 'filho') {
+      return candidate.tipo_relacionamento === 'pai' || candidate.tipo_relacionamento === 'mae';
+    }
+
+    return false;
+  });
+}
+
+export async function excluirRelacionamentoComInverso(id: string): Promise<boolean> {
+  const relacionamentos = await obterTodosRelacionamentos();
+  const relacionamento = relacionamentos.find((rel) => rel.id === id);
+
+  if (!relacionamento) {
+    return deletarRelacionamento(id);
+  }
+
+  const inverso = await encontrarRelacionamentoInverso(relacionamento);
+  const deleted = await deletarRelacionamento(id);
+
+  if (!deleted) return false;
+
+  if (inverso) {
+    await deletarRelacionamento(inverso.id);
+  }
+
+  return true;
+}
+
+export async function excluirRelacionamentoPorPayloadComInverso(
+  relacionamento: Pick<Relacionamento, 'pessoa_origem_id' | 'pessoa_destino_id' | 'tipo_relacionamento' | 'subtipo_relacionamento'>
+): Promise<boolean> {
+  const existing = await buscarRelacionamentoPorPayload(relacionamento);
+  if (!existing) return true;
+
+  return excluirRelacionamentoComInverso(existing.id);
+}
 
 // =====================================================
 // BUSCA
@@ -570,17 +712,10 @@ export async function importarDadosFamilia(dados: any[]) {
         if (pai) {
           const paiId = nomeParaId.get(pai);
           if (paiId) {
-            await adicionarRelacionamento({
+            await adicionarRelacionamentoComInverso({
               pessoa_origem_id: pessoaId,
               pessoa_destino_id: paiId,
               tipo_relacionamento: 'pai',
-              subtipo_relacionamento: tipoFiliacao,
-            });
-
-            await adicionarRelacionamento({
-              pessoa_origem_id: paiId,
-              pessoa_destino_id: pessoaId,
-              tipo_relacionamento: 'filho',
               subtipo_relacionamento: tipoFiliacao,
             });
           }
@@ -589,17 +724,10 @@ export async function importarDadosFamilia(dados: any[]) {
         if (mae) {
           const maeId = nomeParaId.get(mae);
           if (maeId) {
-            await adicionarRelacionamento({
+            await adicionarRelacionamentoComInverso({
               pessoa_origem_id: pessoaId,
               pessoa_destino_id: maeId,
               tipo_relacionamento: 'mae',
-              subtipo_relacionamento: tipoFiliacao,
-            });
-
-            await adicionarRelacionamento({
-              pessoa_origem_id: maeId,
-              pessoa_destino_id: pessoaId,
-              tipo_relacionamento: 'filho',
               subtipo_relacionamento: tipoFiliacao,
             });
           }
@@ -608,16 +736,9 @@ export async function importarDadosFamilia(dados: any[]) {
         if (conjuge) {
           const conjugeId = nomeParaId.get(conjuge);
           if (conjugeId) {
-            await adicionarRelacionamento({
+            await adicionarRelacionamentoComInverso({
               pessoa_origem_id: pessoaId,
               pessoa_destino_id: conjugeId,
-              tipo_relacionamento: 'conjuge',
-              subtipo_relacionamento: 'casamento',
-            });
-
-            await adicionarRelacionamento({
-              pessoa_origem_id: conjugeId,
-              pessoa_destino_id: pessoaId,
               tipo_relacionamento: 'conjuge',
               subtipo_relacionamento: 'casamento',
             });
@@ -628,9 +749,11 @@ export async function importarDadosFamilia(dados: any[]) {
       }
     }
 
+    const relacionamentosCriados = await obterTodosRelacionamentos();
+
     return {
       pessoas,
-      relacionamentos,
+      relacionamentos: relacionamentosCriados,
       erros,
       sucesso: pessoas.length > 0,
     };

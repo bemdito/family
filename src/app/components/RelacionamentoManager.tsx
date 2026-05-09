@@ -14,10 +14,10 @@ import {
   GitBranch
 } from 'lucide-react';
 import {
-  adicionarRelacionamento,
-  deletarRelacionamento,
+  adicionarRelacionamentoComInverso,
+  excluirRelacionamentoComInverso,
+  excluirRelacionamentoPorPayloadComInverso,
   obterTodasPessoas,
-  obterTodosRelacionamentos
 } from '../services/dataService';
 
 interface RelacionamentoManagerProps {
@@ -99,47 +99,15 @@ export function RelacionamentoManager({
 
     setLoading(true);
     try {
-      const rel1 = await adicionarRelacionamento({
+      const rel1 = await adicionarRelacionamentoComInverso({
         pessoa_origem_id: pessoaId,
         pessoa_destino_id: pessoaSelecionada.id,
         tipo_relacionamento: tipoSelecionado as TipoRelacionamento,
         subtipo_relacionamento: subtipoSelecionado,
-      });
+      }, { inverseTipoForFilho: parentGender });
 
       if (!rel1) {
         throw new Error('Falha ao criar relacionamento principal');
-      }
-
-      // Bidirecionais
-      if (tipoSelecionado === 'conjuge' || tipoSelecionado === 'irmao') {
-        await adicionarRelacionamento({
-          pessoa_origem_id: pessoaSelecionada.id,
-          pessoa_destino_id: pessoaId,
-          tipo_relacionamento: tipoSelecionado as TipoRelacionamento,
-          subtipo_relacionamento: subtipoSelecionado,
-        });
-      }
-
-      // Se a pessoa atual aponta para alguém como pai/mãe,
-      // o inverso é essa pessoa apontar para a atual como filho.
-      if (tipoSelecionado === 'pai' || tipoSelecionado === 'mae') {
-        await adicionarRelacionamento({
-          pessoa_origem_id: pessoaSelecionada.id,
-          pessoa_destino_id: pessoaId,
-          tipo_relacionamento: 'filho',
-          subtipo_relacionamento: subtipoSelecionado,
-        });
-      }
-
-      // Se a pessoa atual aponta para alguém como filho,
-      // o inverso é o filho apontar para a atual como pai ou mãe.
-      if (tipoSelecionado === 'filho') {
-        await adicionarRelacionamento({
-          pessoa_origem_id: pessoaSelecionada.id,
-          pessoa_destino_id: pessoaId,
-          tipo_relacionamento: parentGender,
-          subtipo_relacionamento: subtipoSelecionado,
-        });
       }
 
       setRelacionamentos(prev => [
@@ -169,37 +137,15 @@ export function RelacionamentoManager({
 
     setLoading(true);
     try {
-      const todosRels = await obterTodosRelacionamentos();
-
-      const relsParaDeletar = todosRels.filter((r: Relacionamento) => {
-        const isDirect =
-          r.pessoa_origem_id === pessoaId &&
-          r.pessoa_destino_id === rel.pessoa.id &&
-          r.tipo_relacionamento === rel.tipo;
-
-        const isReverseConjugeIrmao =
-          (rel.tipo === 'conjuge' || rel.tipo === 'irmao') &&
-          r.pessoa_origem_id === rel.pessoa.id &&
-          r.pessoa_destino_id === pessoaId &&
-          r.tipo_relacionamento === rel.tipo;
-
-        const isReversePaiMae =
-          (rel.tipo === 'pai' || rel.tipo === 'mae') &&
-          r.pessoa_origem_id === rel.pessoa.id &&
-          r.pessoa_destino_id === pessoaId &&
-          r.tipo_relacionamento === 'filho';
-
-        const isReverseFilho =
-          rel.tipo === 'filho' &&
-          r.pessoa_origem_id === rel.pessoa.id &&
-          r.pessoa_destino_id === pessoaId &&
-          (r.tipo_relacionamento === 'pai' || r.tipo_relacionamento === 'mae');
-
-        return isDirect || isReverseConjugeIrmao || isReversePaiMae || isReverseFilho;
-      });
-
-      for (const r of relsParaDeletar) {
-        await deletarRelacionamento(r.id);
+      if (rel.relacionamentoId) {
+        await excluirRelacionamentoComInverso(rel.relacionamentoId);
+      } else {
+        await excluirRelacionamentoPorPayloadComInverso({
+          pessoa_origem_id: pessoaId,
+          pessoa_destino_id: rel.pessoa.id,
+          tipo_relacionamento: rel.tipo,
+          subtipo_relacionamento: rel.subtipo,
+        });
       }
 
       setRelacionamentos(prev => prev.filter(r => !(r.tipo === rel.tipo && r.pessoa.id === rel.pessoa.id)));

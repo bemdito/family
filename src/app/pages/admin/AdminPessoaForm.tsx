@@ -7,9 +7,13 @@ import {
   adicionarPessoa,
   atualizarPessoa,
   obterPessoaPorId,
-  adicionarRelacionamento,
+  adicionarRelacionamentoComInverso,
   obterTodasPessoas,
 } from '../../services/dataService';
+import {
+  listarArquivosHistoricosPorPessoa,
+  substituirArquivosHistoricosDaPessoa,
+} from '../../services/arquivosHistoricosService';
 import {
   TipoEntidade,
   ArquivoHistorico,
@@ -86,6 +90,7 @@ export function AdminPessoaForm() {
           const pessoa = await obterPessoaPorId(id);
 
           if (pessoa) {
+            const arquivosHistoricos = await listarArquivosHistoricosPorPessoa(id);
             const data = {
               nome_completo: pessoa.nome_completo || '',
               data_nascimento: pessoa.data_nascimento?.toString() || '',
@@ -103,7 +108,7 @@ export function AdminPessoaForm() {
               telefone: pessoa.telefone || '',
               endereco: pessoa.endereco || '',
               rede_social: pessoa.rede_social || '',
-              arquivos_historicos: pessoa.arquivos_historicos || [],
+              arquivos_historicos: arquivosHistoricos,
             };
 
             setFormData(data);
@@ -158,7 +163,6 @@ export function AdminPessoaForm() {
         local_falecimento: normalizeLocation(formData.local_falecimento),
         lado: formData.lado || 'esquerda',
         manual_generation: formData.manual_generation ? Number(formData.manual_generation) : null,
-        arquivos_historicos: formData.arquivos_historicos || [],
       };
 
       const validationErrors = validateEditablePersonForm(pessoaData);
@@ -194,27 +198,12 @@ export function AdminPessoaForm() {
 
           for (const relPendente of relacionamentosPendentes) {
             try {
-              await adicionarRelacionamento({
+              await adicionarRelacionamentoComInverso({
                 pessoa_origem_id: pessoaCriada.id,
                 pessoa_destino_id: relPendente.pessoa.id,
                 tipo_relacionamento: relPendente.tipo,
                 subtipo_relacionamento: relPendente.subtipo,
-              });
-
-              let tipoInverso: TipoRelacionamento = relPendente.tipo;
-
-              if (relPendente.tipo === 'pai' || relPendente.tipo === 'mae') {
-                tipoInverso = 'filho';
-              } else if (relPendente.tipo === 'filho') {
-                tipoInverso = 'pai';
-              }
-
-              await adicionarRelacionamento({
-                pessoa_origem_id: relPendente.pessoa.id,
-                pessoa_destino_id: pessoaCriada.id,
-                tipo_relacionamento: tipoInverso,
-                subtipo_relacionamento: relPendente.subtipo,
-              });
+              }, { inverseTipoForFilho: 'pai' });
 
               relsCriados++;
             } catch (error) {
@@ -225,6 +214,8 @@ export function AdminPessoaForm() {
           toast.success(`${relsCriados} relacionamento(s) criado(s)!`);
         }
       }
+
+      await substituirArquivosHistoricosDaPessoa(pessoaCriada.id, formData.arquivos_historicos || []);
 
       const snapshotAtual = JSON.stringify({
         ...formData,

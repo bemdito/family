@@ -11,8 +11,18 @@ export function AdminMigrarDados() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [stats, setStats] = useState<{ pessoas?: number; relacionamentos?: number } | null>(null);
+  const [confirmationText, setConfirmationText] = useState('');
+  const destructiveToolsEnabled =
+    !import.meta.env.PROD || import.meta.env.VITE_ENABLE_DESTRUCTIVE_ADMIN_TOOLS === 'true';
+  const canRunMigration = destructiveToolsEnabled && confirmationText === 'MIGRAR DADOS';
 
   const handleMigrar = async () => {
+    if (!canRunMigration) {
+      setStatus('error');
+      setMessage('Ferramenta bloqueada. Confirme a frase exata e verifique se o ambiente permite operação destrutiva.');
+      return;
+    }
+
     if (!window.confirm('⚠️ ATENÇÃO: Esta ação irá APAGAR todos os dados existentes no banco e carregar os dados do seed.\n\nDeseja continuar?')) {
       return;
     }
@@ -71,12 +81,22 @@ export function AdminMigrarDados() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h3 className="font-semibold text-blue-900 mb-2">📋 Antes de começar:</h3>
               <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
-                <li>Certifique-se de que executou o SQL do arquivo <code className="bg-blue-100 px-1 rounded">database-schema.sql</code> no Supabase SQL Editor</li>
+                <li>Certifique-se de que as migrations atuais foram aplicadas no ambiente correto</li>
                 <li>Este processo irá <strong>apagar todos os dados existentes</strong> no banco</li>
                 <li>Serão criados 62 membros da família com todos os relacionamentos</li>
                 <li>Os relacionamentos de irmãos serão detectados automaticamente</li>
               </ol>
             </div>
+
+            {!destructiveToolsEnabled && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <h3 className="font-semibold text-red-900 mb-2">Ferramenta bloqueada em produção</h3>
+                <p className="text-sm text-red-800">
+                  Para liberar explicitamente em um ambiente controlado, configure
+                  <code className="mx-1 rounded bg-red-100 px-1">VITE_ENABLE_DESTRUCTIVE_ADMIN_TOOLS=true</code>.
+                </p>
+              </div>
+            )}
 
             {/* Status da migração */}
             {status !== 'idle' && (
@@ -135,6 +155,19 @@ export function AdminMigrarDados() {
               </ul>
             </div>
 
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <label className="block text-sm font-semibold text-red-900 mb-2">
+                Para habilitar o botão, digite exatamente: MIGRAR DADOS
+              </label>
+              <input
+                value={confirmationText}
+                onChange={(event) => setConfirmationText(event.target.value)}
+                disabled={!destructiveToolsEnabled || status === 'loading'}
+                className="flex h-10 w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-gray-100"
+                placeholder="MIGRAR DADOS"
+              />
+            </div>
+
             {/* Botão de ação */}
             <div className="flex gap-3 justify-end pt-4 border-t">
               <Button
@@ -145,7 +178,7 @@ export function AdminMigrarDados() {
               </Button>
               <Button
                 onClick={handleMigrar}
-                disabled={status === 'loading'}
+                disabled={status === 'loading' || !canRunMigration}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {status === 'loading' ? (

@@ -24,15 +24,9 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '../components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -64,6 +58,7 @@ import {
 import { FAMILY_TREE_COLORS, hasDeathDate } from '../components/FamilyTree/visualTokens';
 import { useAuth } from '../contexts/AuthContext';
 import { getMemberProfile, getPrimaryLinkedPerson, MemberProfile } from '../services/memberProfileService';
+import { listarNotificacoes } from '../services/userEngagementService';
 import {
   Search,
   Monitor,
@@ -80,8 +75,8 @@ import {
   LogOut,
   Pencil,
   Sparkles,
-  SlidersHorizontal,
   MessageCircle,
+  UserSearch,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -96,11 +91,22 @@ const AI_QUESTION_EXAMPLES = [
   'Quem são meus bisavós paternos?',
   'Quantas pessoas da família nasceram em Recife?',
   'Quais parentes moram em Porto Alegre?',
-  'Monte um resumo da linha genealógica de Tulius.',
-  'Quem são os descendentes de determinada pessoa?',
+  'Monte um resumo da linha genealógica de uma pessoa.',
 ];
+const AI_QUESTION_PLACEHOLDER = `Pergunte, por exemplo:\n${AI_QUESTION_EXAMPLES.join('\n')}`;
 
 const AI_ENDPOINT = '/api/ai';
+
+const CURIOSITY_TOPIC_OPTIONS = [
+  'Meu parentesco',
+  'Biografia e Curiosidades',
+  'Fatos Históricos do Dia de Nascimento',
+  'O que diz a Astrologia',
+  'Contatos',
+  'Árvore Genealógica',
+] as const;
+
+type CuriosityTopic = typeof CURIOSITY_TOPIC_OPTIONS[number];
 
 export function Home() {
   const navigate = useNavigate();
@@ -137,9 +143,10 @@ export function Home() {
   const [connectionTarget, setConnectionTarget] = useState<Pessoa | null>(null);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
-  const [aiAnswer, setAiAnswer] = useState('');
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [selectedCuriosityPersonId, setSelectedCuriosityPersonId] = useState<string>('');
+  const [selectedCuriosityTopics, setSelectedCuriosityTopics] = useState<CuriosityTopic[]>([]);
 
   const [edgeFilters, setEdgeFilters] = useState({
     conjugal: true,
@@ -296,6 +303,15 @@ export function Home() {
 
     loadLinkedPerson();
   }, [user]);
+
+  useEffect(() => {
+    if (selectedCuriosityPersonId || pessoas.length === 0) return;
+
+    const defaultPersonId = linkedPersonId || selectedPersonId || pessoas[0]?.id;
+    if (defaultPersonId) {
+      setSelectedCuriosityPersonId(defaultPersonId);
+    }
+  }, [linkedPersonId, pessoas, selectedCuriosityPersonId, selectedPersonId]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -582,18 +598,50 @@ export function Home() {
     (user?.user_metadata?.picture as string | undefined) ||
     null;
   const initials = getInitials(displayName || fullDisplayName);
+  const notificationCount = useMemo(
+    () => listarNotificacoes().filter((notificacao) => !notificacao.lida).length,
+    []
+  );
   const directRelationCounts = useMemo(
     () => calculateDirectRelationCounts(pessoas, relacionamentos, centralReferencePersonId),
     [pessoas, relacionamentos, centralReferencePersonId]
   );
+  const selectedCuriosityPerson = useMemo(
+    () => pessoas.find((pessoa) => pessoa.id === selectedCuriosityPersonId),
+    [pessoas, selectedCuriosityPersonId]
+  );
+  const canAskAi = Boolean(aiQuestion.trim() || (selectedCuriosityPerson && selectedCuriosityTopics.length > 0));
+  const toggleCuriosityTopic = useCallback((topic: CuriosityTopic) => {
+    setSelectedCuriosityTopics((current) =>
+      current.includes(topic)
+        ? current.filter((item) => item !== topic)
+        : [...current, topic]
+    );
+  }, []);
+  const handleAdvanceCuriosityPrompt = useCallback(() => {
+    if (!selectedCuriosityPerson || selectedCuriosityTopics.length === 0) return;
+
+    setAiQuestion(
+      `Fale sobre ${selectedCuriosityPerson.nome_completo} considerando: ${selectedCuriosityTopics.join(', ')}.`
+    );
+    setAiError(null);
+  }, [selectedCuriosityPerson, selectedCuriosityTopics]);
 
   const handleAskAi = useCallback(async () => {
-    const question = aiQuestion.trim();
-    if (!question || aiLoading) return;
+    const manualQuestion = aiQuestion.trim();
+    if ((!manualQuestion && (!selectedCuriosityPerson || selectedCuriosityTopics.length === 0)) || aiLoading) return;
+
+    const curiosityInstruction = selectedCuriosityPerson && selectedCuriosityTopics.length > 0
+      ? [
+          `Pessoa selecionada: ${selectedCuriosityPerson.nome_completo}.`,
+          `Tópicos desejados: ${selectedCuriosityTopics.join(', ')}.`,
+        ].join('\n')
+      : '';
+    const question = manualQuestion || 'Fale sobre a pessoa selecionada considerando os tópicos marcados.';
+    const message = [question, curiosityInstruction].filter(Boolean).join('\n\n');
 
     setAiLoading(true);
     setAiError(null);
-    setAiAnswer('');
 
     try {
       const response = await fetch(AI_ENDPOINT, {
@@ -603,7 +651,7 @@ export function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: question,
+          message,
           context: buildAiTreeContext({
             pessoas,
             relacionamentos,
@@ -612,6 +660,8 @@ export function Home() {
             centralPersonId: centralReferencePersonId,
             centralPersonName: fullDisplayName || displayName,
             directRelationCounts,
+            selectedCuriosityPerson,
+            selectedCuriosityTopics,
           }),
         }),
       });
@@ -628,7 +678,7 @@ export function Home() {
         throw new Error('A IA não retornou uma resposta válida.');
       }
 
-      setAiAnswer(answer);
+      setAiQuestion(answer || 'Não encontrei uma resposta para essa pergunta.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível gerar a resposta agora.';
       setAiError(message);
@@ -646,34 +696,23 @@ export function Home() {
     fullDisplayName,
     pessoas,
     relacionamentos,
+    selectedCuriosityPerson,
+    selectedCuriosityTopics,
     stats,
   ]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-3 py-3 shadow-sm lg:px-5">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <UserMenu
-              isLoggedIn={Boolean(user)}
-              displayName={displayName}
-              avatarUrl={avatarUrl}
-              initials={initials}
-              onLogin={() => navigateFromHome('/entrar')}
-              onEditProfile={() => navigateFromHome('/minha-arvore')}
-              onFavorites={() => navigateFromHome('/meus-favoritos')}
-              onCalendar={() => navigateFromHome('/calendario-familiar')}
-              onAdmin={() => navigateFromHome('/admin/login')}
-              onSignOut={handleSignOut}
-            />
-
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+          <div className="flex min-w-0 items-center gap-3 lg:w-56">
             <div className="min-w-0">
               <h1 className="truncate text-lg font-bold text-gray-900 lg:text-xl">{displayName || 'Árvore Genealógica'}</h1>
               <p className="truncate text-xs text-gray-500 lg:text-sm">Árvore Genealógica</p>
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap">
             <div className="w-[170px] shrink-0">
               <Select value={viewMode} onValueChange={(value) => handleViewModeChange(value as TipoVisualizacaoArvore)}>
                 <SelectTrigger className="h-9 rounded-md border border-gray-300 bg-white px-3 shadow-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-offset-2">
@@ -700,36 +739,23 @@ export function Home() {
 
             <Button
               variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
+              className="h-9 shrink-0 gap-2 px-3"
               title="Fórum de Discussões"
               aria-label="Abrir Fórum de Discussões"
               onClick={() => navigateFromHome('/forum')}
             >
               <MessageCircle className="h-4 w-4" />
+              <span>Fórum</span>
             </Button>
 
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="h-9 shrink-0 gap-2 px-3">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  <span className="hidden xl:inline">Filtros</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="max-h-[75vh] w-[min(92vw,360px)] overflow-y-auto p-4">
-                <FilterPanel
-                  viewMode={viewMode}
-                  personFilters={personFilters}
-                  edgeFilters={edgeFilters}
-                  directRelativeFilters={directRelativeFilters}
-                  directRelationCounts={directRelationCounts}
-                  showDirectRelativeFilters={isMobile || !sidebarOpen}
-                  onTogglePerson={togglePersonFilter}
-                  onToggleEdge={toggleFilter}
-                  onToggleDirect={toggleDirectRelativeFilter}
-                />
-              </PopoverContent>
-            </Popover>
+            <Button
+              variant="outline"
+              className="h-9 shrink-0 gap-2 px-3"
+              onClick={() => navigateFromHome('/calendario-familiar')}
+            >
+              <CalendarDays className="h-4 w-4" />
+              <span>Calendário</span>
+            </Button>
 
             {isMobile && (
               <Button
@@ -771,18 +797,24 @@ export function Home() {
                   </div>
                 )}
               </div>
-
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9 shrink-0"
-                title="Notificações"
-                aria-label="Abrir notificações"
-                onClick={() => navigateFromHome('/notificacoes')}
-              >
-                <Bell className="w-4 h-4" />
-              </Button>
             </div>
+          </div>
+
+          <div className="flex justify-end lg:ml-auto">
+            <UserMenu
+              isLoggedIn={Boolean(user)}
+              displayName={displayName}
+              avatarUrl={avatarUrl}
+              initials={initials}
+              notificationCount={notificationCount}
+              onLogin={() => navigateFromHome('/entrar')}
+              onEditProfile={() => navigateFromHome('/minha-arvore')}
+              onFavorites={() => navigateFromHome('/meus-favoritos')}
+              onCalendar={() => navigateFromHome('/calendario-familiar')}
+              onNotifications={() => navigateFromHome('/notificacoes')}
+              onAdmin={() => navigateFromHome('/admin/login')}
+              onSignOut={handleSignOut}
+            />
           </div>
         </div>
       </header>
@@ -947,6 +979,64 @@ export function Home() {
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch] sm:px-6">
             <div className="space-y-4">
+              <section className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
+                  <UserSearch className="h-4 w-4 text-blue-600" />
+                  Descubra mais sobre...
+                </h2>
+                <div className="space-y-4">
+                  <Select value={selectedCuriosityPersonId} onValueChange={setSelectedCuriosityPersonId}>
+                    <SelectTrigger className="w-full bg-white">
+                      <SelectValue placeholder="Selecione uma pessoa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {pessoas.map((pessoa) => (
+                        <SelectItem key={pessoa.id} value={pessoa.id}>
+                          {pessoa.nome_completo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {CURIOSITY_TOPIC_OPTIONS.map((topic) => {
+                      const checked = selectedCuriosityTopics.includes(topic);
+
+                      return (
+                        <label
+                          key={topic}
+                          className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                            checked
+                              ? 'border-blue-200 bg-blue-50 text-blue-900'
+                              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleCuriosityTopic(topic)}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>{topic}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAdvanceCuriosityPrompt}
+                      disabled={!selectedCuriosityPerson || selectedCuriosityTopics.length === 0}
+                      className="w-full bg-white sm:w-auto"
+                    >
+                      Avançar
+                    </Button>
+                  </div>
+                </div>
+              </section>
+
               <section>
                 <h2 className="mb-2 text-sm font-semibold text-gray-900">Pergunte à IA</h2>
                 <Textarea
@@ -955,30 +1045,27 @@ export function Home() {
                     setAiQuestion(event.target.value);
                     setAiError(null);
                   }}
-                  placeholder="Digite sua pergunta..."
-                  className="min-h-24 resize-none"
+                  placeholder={AI_QUESTION_PLACEHOLDER}
+                  className="min-h-36 resize-y"
                 />
-                <p className="mt-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-                  A IA usa os dados carregados nesta árvore para responder. A chave da OpenAI fica somente no backend.
-                </p>
+                <div className="mt-3 flex justify-end">
+                  <Button onClick={handleAskAi} disabled={!canAskAi || aiLoading} className="w-full sm:w-auto">
+                    {aiLoading ? 'Perguntando...' : 'Perguntar'}
+                  </Button>
+                </div>
                 {aiError && (
                   <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     {aiError}
                   </p>
-                )}
-                {aiAnswer && (
-                  <div className="mt-2 max-h-[32vh] overflow-y-auto whitespace-pre-wrap rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-relaxed text-emerald-950">
-                    {aiAnswer}
-                  </div>
                 )}
               </section>
 
               <section>
                 <h2 className="mb-2 text-sm font-semibold text-gray-900">Curiosidades rápidas</h2>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <Stat label="Pessoas cadastradas" value={stats.totalPessoas} />
                   <Stat label="Vivos" value={stats.pessoasVivas} />
                   <Stat label="Falecidos" value={stats.pessoasFalecidas} />
-                  <Stat label="Cidades atuais" value={stats.cidadesAtuais} />
                 </div>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <CuriosityCard label="Mais velho" value={curiosities.oldest?.nome_completo || 'Sem data'} detail={formatYear(curiosities.oldest?.data_nascimento)} />
@@ -989,37 +1076,12 @@ export function Home() {
               </section>
 
               <section className="grid gap-3 sm:grid-cols-2">
-                <CuriosityList title="Onde moram" items={curiosities.topCurrentCities.map(({ city, count }) => [city, count])} />
-                <CuriosityList title="Onde nasceram" items={curiosities.topBirthCities.map(({ city, count }) => [city, count])} />
+                <CuriosityList title="Onde moram" items={curiosities.topCurrentCities} />
+                <CuriosityList title="Onde nasceram" items={curiosities.topBirthCities} />
               </section>
 
-              <section>
-                <p className="mb-2 text-sm font-semibold text-gray-900">Sugestões de perguntas</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {AI_QUESTION_EXAMPLES.map((example) => (
-                    <button
-                      key={example}
-                      type="button"
-                      onClick={() => {
-                        setAiQuestion(example);
-                        setAiError(null);
-                        setAiAnswer('');
-                      }}
-                      className="min-h-11 rounded-md border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                    >
-                      {example}
-                    </button>
-                  ))}
-                </div>
-              </section>
               </div>
             </div>
-
-          <DialogFooter className="shrink-0 border-t border-gray-200 px-4 py-4 sm:px-6">
-            <Button onClick={handleAskAi} disabled={!aiQuestion.trim() || aiLoading}>
-              {aiLoading ? 'Perguntando...' : 'Perguntar'}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -1056,10 +1118,12 @@ function UserMenu({
   displayName,
   avatarUrl,
   initials,
+  notificationCount,
   onLogin,
   onEditProfile,
   onFavorites,
   onCalendar,
+  onNotifications,
   onAdmin,
   onSignOut,
 }: {
@@ -1067,10 +1131,12 @@ function UserMenu({
   displayName: string;
   avatarUrl: string | null;
   initials: string;
+  notificationCount: number;
   onLogin: () => void;
   onEditProfile: () => void;
   onFavorites: () => void;
   onCalendar: () => void;
+  onNotifications: () => void;
   onAdmin: () => void;
   onSignOut: () => void;
 }) {
@@ -1079,7 +1145,7 @@ function UserMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="group flex h-12 shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-1.5 pr-2 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          className="group relative flex h-12 shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-1.5 pr-2 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           title={isLoggedIn ? displayName || 'Conta do usuário' : 'Login'}
           aria-label={isLoggedIn ? displayName || 'Conta do usuário' : 'Login'}
         >
@@ -1096,6 +1162,11 @@ function UserMenu({
               <UserCircle2 className="h-6 w-6" />
             )}
           </span>
+          {notificationCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+              {notificationCount > 99 ? '99+' : notificationCount}
+            </span>
+          )}
           <span className="hidden leading-none sm:block">
             <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Menu</span>
             <span className="mt-1 flex items-center gap-1 text-xs font-semibold text-gray-800">
@@ -1124,6 +1195,10 @@ function UserMenu({
             <DropdownMenuItem onClick={onCalendar}>
               <CalendarDays className="h-4 w-4" />
               Calendário familiar
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onNotifications}>
+              <Bell className="h-4 w-4" />
+              Notificações
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onAdmin}>
               <Settings className="h-4 w-4" />
@@ -1239,15 +1314,39 @@ function CuriosityCard({ label, value, detail }: { label: string; value: string;
   );
 }
 
-function CuriosityList({ title, items }: { title: string; items: Array<[string, number]> }) {
+type CityCuriosity = {
+  city: string;
+  count: number;
+  people: string[];
+};
+
+function CuriosityList({ title, items }: { title: string; items: CityCuriosity[] }) {
   return (
     <div>
       <h2 className="mb-2 text-sm font-semibold text-gray-900">{title}</h2>
       <div className="space-y-2">
-        {items.length > 0 ? items.map(([label, count]) => (
-          <div key={label} className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-            <span className="truncate text-gray-600">{label}</span>
-            <span className="font-semibold text-gray-900">{count}</span>
+        {items.length > 0 ? items.map((item) => (
+          <div
+            key={item.city}
+            className="group relative flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+            title={`${item.city}\n${item.people.join('\n')}`}
+          >
+            <span className="truncate text-gray-600">{item.city}</span>
+            <span className="font-semibold text-gray-900">{item.count}</span>
+            <div className="pointer-events-none absolute left-3 right-3 top-[calc(100%+0.35rem)] z-20 hidden rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-700 shadow-lg group-hover:block">
+              <p className="font-semibold text-gray-900">{item.city}</p>
+              <p className="mt-1 text-gray-500">Pessoas:</p>
+              <ul className="mt-1 space-y-1">
+                {item.people.slice(0, 10).map((name) => (
+                  <li key={name} className="truncate">
+                    {name}
+                  </li>
+                ))}
+              </ul>
+              {item.people.length > 10 && (
+                <p className="mt-2 font-medium text-gray-600">+ {item.people.length - 10} pessoas</p>
+              )}
+            </div>
           </div>
         )) : (
           <p className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">Sem dados.</p>
@@ -1279,10 +1378,11 @@ function calculateCuriosities(pessoas: Pessoa[], relacionamentos: Relacionamento
     .filter((item): item is { pessoa: Pessoa; birth: number } => typeof item.birth === 'number');
   const sortedByBirth = [...withBirth].sort((a, b) => a.birth - b.birth);
 
-  const currentCities = countBy(
-    humans.filter((pessoa) => !hasDeathDate(pessoa.data_falecimento)).map((pessoa) => pessoa.local_atual)
+  const currentCities = countCityPeople(
+    humans.filter((pessoa) => !hasDeathDate(pessoa.data_falecimento)),
+    (pessoa) => pessoa.local_atual
   );
-  const birthCities = countBy(humans.map((pessoa) => pessoa.local_nascimento));
+  const birthCities = countCityPeople(humans, (pessoa) => pessoa.local_nascimento);
   const childrenByParent = new Map<string, Set<string>>();
 
   const addChild = (parentId: string, childId: string) => {
@@ -1319,16 +1419,17 @@ function calculateCuriosities(pessoas: Pessoa[], relacionamentos: Relacionamento
   };
 }
 
-function countBy(values: Array<string | undefined | null>) {
-  const counts = new Map<string, number>();
-  values.forEach((value) => {
-    const normalized = value?.trim();
+function countCityPeople(people: Pessoa[], getLocation: (pessoa: Pessoa) => string | undefined | null): CityCuriosity[] {
+  const counts = new Map<string, string[]>();
+  people.forEach((pessoa) => {
+    const normalized = getLocation(pessoa)?.trim();
     if (!normalized) return;
-    counts.set(normalized, (counts.get(normalized) || 0) + 1);
+    const names = counts.get(normalized) || [];
+    counts.set(normalized, [...names, pessoa.nome_completo]);
   });
 
   return Array.from(counts.entries())
-    .map(([city, count]) => ({ city, count }))
+    .map(([city, people]) => ({ city, count: people.length, people: people.sort((a, b) => a.localeCompare(b)) }))
     .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
 }
 
@@ -1340,6 +1441,8 @@ function buildAiTreeContext({
   centralPersonId,
   centralPersonName,
   directRelationCounts,
+  selectedCuriosityPerson,
+  selectedCuriosityTopics,
 }: {
   pessoas: Pessoa[];
   relacionamentos: Relacionamento[];
@@ -1348,11 +1451,30 @@ function buildAiTreeContext({
   centralPersonId?: string;
   centralPersonName: string;
   directRelationCounts: DirectRelationCounts;
+  selectedCuriosityPerson?: Pessoa;
+  selectedCuriosityTopics: CuriosityTopic[];
 }) {
   return {
     pessoaCentral: {
       id: centralPersonId,
       nome: centralPersonName,
+    },
+    consultaCuriosidades: {
+      pessoaSelecionada: selectedCuriosityPerson
+        ? {
+            id: selectedCuriosityPerson.id,
+            nome: selectedCuriosityPerson.nome_completo,
+            nascimento: selectedCuriosityPerson.data_nascimento,
+            falecimento: selectedCuriosityPerson.data_falecimento,
+            localNascimento: selectedCuriosityPerson.local_nascimento,
+            localAtual: selectedCuriosityPerson.local_atual,
+            telefone: selectedCuriosityPerson.telefone,
+            redeSocial: selectedCuriosityPerson.instagram_usuario || selectedCuriosityPerson.instagram_url || selectedCuriosityPerson.rede_social,
+            bio: selectedCuriosityPerson.minibio,
+            curiosidades: selectedCuriosityPerson.curiosidades,
+          }
+        : null,
+      topicosDesejados: selectedCuriosityTopics,
     },
     estatisticas: stats,
     filtrosFamiliaresDiretos: directRelationCounts,

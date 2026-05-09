@@ -55,6 +55,20 @@ export function AdminDiagnostico() {
   const [diagnostico, setDiagnostico] = useState<DiagnosticoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const diagnosticoEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-055bf375/diagnostico`;
+
+  const getDiagnosticoErrorMessage = async (response: Response) => {
+    if (response.status === 401 || response.status === 403) {
+      return 'Acesso negado pelo endpoint legado de diagnóstico. Verifique autenticação, anon key e permissões da Edge Function.';
+    }
+
+    if (response.status === 404) {
+      return 'Endpoint legado de diagnóstico não encontrado. A função make-server-055bf375 pode não estar implantada.';
+    }
+
+    const text = await response.text().catch(() => '');
+    return `Endpoint legado indisponível (${response.status}). ${text || response.statusText}`;
+  };
 
   const carregarDiagnostico = async () => {
     setLoading(true);
@@ -62,7 +76,7 @@ export function AdminDiagnostico() {
     
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-055bf375/diagnostico`,
+        diagnosticoEndpoint,
         {
           method: 'GET',
           headers: {
@@ -73,19 +87,26 @@ export function AdminDiagnostico() {
       );
 
       if (!response.ok) {
-        throw new Error(`Erro ao buscar diagnóstico: ${response.statusText}`);
+        throw new Error(await getDiagnosticoErrorMessage(response));
       }
 
-      const result = await response.json();
+      const result = await response.json().catch(() => {
+        throw new Error('Resposta inesperada do endpoint legado: o conteúdo não é JSON válido.');
+      });
       
       if (result.success) {
         setDiagnostico(result.diagnostico);
       } else {
-        setError(result.error || 'Erro desconhecido');
+        setError(result.error || 'Endpoint legado retornou erro sem mensagem detalhada.');
       }
     } catch (err) {
       console.error('Erro ao carregar diagnóstico:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao conectar com o servidor');
+      const message = err instanceof Error ? err.message : 'Erro ao conectar com o servidor';
+      setError(
+        message.includes('Failed to fetch') || message.includes('NetworkError')
+          ? 'Não foi possível conectar ao endpoint legado. Possíveis causas: função indisponível, CORS, rede ou URL inválida.'
+          : message
+      );
     } finally {
       setLoading(false);
     }
@@ -143,6 +164,21 @@ export function AdminDiagnostico() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
+        <Card className="border-amber-200 bg-amber-50 mb-6">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-6 h-6 text-amber-600 mt-0.5" />
+              <div>
+                <p className="font-semibold text-amber-900">Diagnóstico legado</p>
+                <p className="text-sm text-amber-800">
+                  Esta tela consulta a Edge Function antiga <code className="rounded bg-amber-100 px-1">make-server-055bf375</code>.
+                  O resultado pode não refletir o schema atual versionado em migrations.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {loading && !diagnostico && (
           <div className="flex items-center justify-center py-12">
             <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />

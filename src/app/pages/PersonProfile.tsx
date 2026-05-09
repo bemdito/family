@@ -4,6 +4,7 @@ import { AppLink as Link } from '../components/AppLink';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { obterPessoaPorId, obterRelacionamentosDaPessoa, obterTodasPessoas } from '../services/dataService';
+import { listarArquivosHistoricosPorPessoa } from '../services/arquivosHistoricosService';
 import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
 import { alternarFavorito, conteudoEstaFavoritado } from '../services/userEngagementService';
 import { listarTopicosForum } from '../services/forumService';
@@ -138,10 +139,13 @@ export function PersonProfile() {
       setRelacionamentos(EMPTY_RELATIONSHIPS);
       setRelationshipsLoading(false);
       const pessoaData = await obterPessoaPorId(id);
+      const arquivosHistoricos = pessoaData
+        ? await listarArquivosHistoricosPorPessoa(pessoaData.id)
+        : [];
 
       if (!mounted) return;
 
-      setPessoa(pessoaData);
+      setPessoa(pessoaData ? { ...pessoaData, arquivos_historicos: arquivosHistoricos } : undefined);
       setFavoritado(conteudoEstaFavoritado('pessoa', id));
       setLoading(false);
     }
