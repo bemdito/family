@@ -29,10 +29,10 @@ export function generationColumnsLayout({
     INITIAL_Y,
   } = TREE_CONSTANTS;
 
-  const SPOUSE_VERTICAL_GAP = 72;
-  const BLOCK_VERTICAL_GAP = 80;
-  const SINGLE_PARENT_CHILD_GAP = 140;
-  const HEADER_OFFSET_Y = 72;
+  const SPOUSE_VERTICAL_GAP = 64;
+  const BLOCK_VERTICAL_GAP = 68;
+  const SINGLE_PARENT_CHILD_GAP = 124;
+  const HEADER_OFFSET_Y = 80;
 
   const personMap = new Map(personNodes.map((node) => [node.id, node]));
   const marriageNodeMap = new Map(marriageNodes.map((node) => [node.id, node]));

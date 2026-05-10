@@ -1,5 +1,5 @@
 import React from 'react';
-import { Columns3, List, Network, Users } from 'lucide-react';
+import { Columns3, List, Network } from 'lucide-react';
 import { TipoVisualizacaoArvore } from '../../types';
 
 interface ViewModeToggleProps {
@@ -18,11 +18,6 @@ const OPTIONS: Array<{
     value: 'familiares-diretos',
     label: 'Familiares Diretos',
     Icon: Network,
-  },
-  {
-    value: 'lados',
-    label: 'Por lados',
-    Icon: Users,
   },
   {
     value: 'geracoes',

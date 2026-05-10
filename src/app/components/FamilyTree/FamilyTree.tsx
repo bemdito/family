@@ -21,7 +21,6 @@ import { Pessoa, Relacionamento, TipoVisualizacaoArvore } from '../../types';
 import { nodeTypes } from './nodeTypes';
 import { OrthogonalChildEdge } from './OrthogonalChildEdge';
 import { buildTreeGraph } from './buildTreeGraph';
-import { legacySideLayout } from './layouts/legacySideLayout';
 import { generationColumnsLayout } from './layouts/generationColumnsLayout';
 import { chronologicalListLayout } from './layouts/chronologicalListLayout';
 import { directFamilyDistributedLayout } from './layouts/directFamilyDistributedLayout';
@@ -92,7 +91,7 @@ function getLayoutByViewMode(
     return generationColumnsLayout(graph);
   }
 
-  return legacySideLayout(graph);
+  return generationColumnsLayout(graph);
 }
 
 const MARRIAGE_NODE_SIZE = TREE_CONSTANTS.MARRIAGE_NODE_WIDTH;
@@ -108,6 +107,12 @@ const DIRECT_FAMILY_VIEWPORT_PADDING = 18;
 const DIRECT_FAMILY_MOBILE_VIEWPORT_PADDING = 16;
 const DIRECT_FAMILY_TRANSLATE_PADDING = 120;
 const DIRECT_FAMILY_MOBILE_TRANSLATE_PADDING = 80;
+const GENERATION_INITIAL_VISIBLE_COLUMNS = 4;
+const GENERATION_INITIAL_PADDING = 80;
+const GENERATION_INITIAL_RIGHT_PADDING = 160;
+const GENERATION_INITIAL_BOTTOM_PADDING = 120;
+const GENERATION_INITIAL_MIN_ZOOM = 0.25;
+const GENERATION_INITIAL_MAX_ZOOM = 0.85;
 
 interface FlowBounds {
   x: number;
@@ -262,6 +267,66 @@ function getDirectFamilyTranslateExtent(bounds: FlowBounds, padding: number): Co
   ];
 }
 
+function getGenerationInitialViewport({
+  columns,
+  nodes,
+  containerWidth,
+  containerHeight,
+  nodeWidth,
+  nodeHeight,
+}: {
+  columns: GenerationColumnMeta[];
+  nodes: Node[];
+  containerWidth: number;
+  containerHeight: number;
+  nodeWidth: number;
+  nodeHeight: number;
+}): Viewport | null {
+  if (columns.length === 0 || nodes.length === 0 || containerWidth <= 0 || containerHeight <= 0) {
+    return null;
+  }
+
+  const sortedColumns = [...columns].sort((a, b) => a.x - b.x);
+  const visibleColumns = sortedColumns.slice(0, Math.min(GENERATION_INITIAL_VISIBLE_COLUMNS, sortedColumns.length));
+  const firstColumn = visibleColumns[0];
+  const lastColumn = visibleColumns[visibleColumns.length - 1];
+
+  if (!firstColumn || !lastColumn) return null;
+
+  const minX = firstColumn.x - GENERATION_INITIAL_PADDING;
+  const maxX = lastColumn.x + nodeWidth + GENERATION_INITIAL_RIGHT_PADDING;
+  const firstColumnLeft = firstColumn.x - nodeWidth / 2;
+  const lastColumnRight = lastColumn.x + nodeWidth * 1.5;
+  const nodesForY = nodes.filter((node) => {
+    if (node.hidden || node.type === 'directFamilyAnchorNode') return false;
+    const { width } = getNodeRenderSize(node, nodeWidth, nodeHeight);
+    const centerX = node.position.x + width / 2;
+    return centerX >= firstColumnLeft && centerX <= lastColumnRight;
+  });
+  const yBounds = getFlowBounds(nodesForY.length > 0 ? nodesForY : nodes, nodeWidth, nodeHeight);
+
+  if (!yBounds) return null;
+
+  const minY = yBounds.y - GENERATION_INITIAL_PADDING;
+  const maxY = yBounds.y + yBounds.height + GENERATION_INITIAL_BOTTOM_PADDING;
+  const boundsWidth = Math.max(1, maxX - minX);
+  const boundsHeight = Math.max(1, maxY - minY);
+  const zoomX = containerWidth / (boundsWidth + GENERATION_INITIAL_PADDING * 2);
+  const zoomY = containerHeight / (boundsHeight + GENERATION_INITIAL_PADDING * 2);
+  const zoom = Math.max(
+    GENERATION_INITIAL_MIN_ZOOM,
+    Math.min(zoomX, zoomY, GENERATION_INITIAL_MAX_ZOOM)
+  );
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  return {
+    x: containerWidth / 2 - centerX * zoom,
+    y: containerHeight / 2 - centerY * zoom,
+    zoom,
+  };
+}
+
 function getExportableFlowElement(container: HTMLDivElement | null) {
   return container?.querySelector('.react-flow') as HTMLElement | null;
 }
@@ -382,12 +447,14 @@ export function FamilyTree({
   const reactFlowRef = useRef<ReactFlowInstance | null>(null);
   const directFamilyRecenteringRef = useRef(false);
   const directFamilyViewportRef = useRef<Viewport | null>(null);
+  const generationInitialViewportKeyRef = useRef<string | null>(null);
   const [dragTargetGeneration, setDragTargetGeneration] = useState<number | null>(null);
   const [directFamilyFitZoom, setDirectFamilyFitZoom] = useState<number | null>(null);
   const [directFamilyCurrentZoom, setDirectFamilyCurrentZoom] = useState<number | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const { NODE_WIDTH, NODE_HEIGHT } = TREE_CONSTANTS;
   const isDirectFamilyView = viewMode === 'familiares-diretos';
+  const isGenerationView = viewMode === 'geracoes';
   const directFamilyFallbackMinZoom = isMobile ? DIRECT_FAMILY_MOBILE_FALLBACK_MIN_ZOOM : DIRECT_FAMILY_FALLBACK_MIN_ZOOM;
   const directFamilyMinZoom = directFamilyFitZoom
     ? Math.max(directFamilyFitZoom * 0.9, Math.min(directFamilyFallbackMinZoom, directFamilyFitZoom))
@@ -522,6 +589,33 @@ export function FamilyTree({
     );
   }, [directFamilyBounds, isDirectFamilyView, isMobile]);
 
+  const generationInitialViewport = useMemo(() => {
+    if (!isGenerationView || isMobile) return null;
+
+    return getGenerationInitialViewport({
+      columns: generationColumns,
+      nodes,
+      containerWidth: containerSize.width,
+      containerHeight: containerSize.height,
+      nodeWidth: NODE_WIDTH,
+      nodeHeight: NODE_HEIGHT,
+    });
+  }, [
+    isGenerationView,
+    isMobile,
+    generationColumns,
+    nodes,
+    containerSize.width,
+    containerSize.height,
+    NODE_WIDTH,
+    NODE_HEIGHT,
+  ]);
+
+  const generationInitialViewportKey = useMemo(
+    () => `${dataHash}:${layoutRevision}:${containerSize.width}x${containerSize.height}`,
+    [dataHash, layoutRevision, containerSize.width, containerSize.height]
+  );
+
   useEffect(() => {
     onGenerationColumnsChange?.(generationColumns);
   }, [generationColumns, onGenerationColumnsChange]);
@@ -597,8 +691,15 @@ export function FamilyTree({
 
     if (!focusPersonId && !isDirectFamilyView) {
       const timer = window.setTimeout(() => {
+        if (isGenerationView && generationInitialViewport) {
+          if (generationInitialViewportKeyRef.current === generationInitialViewportKey) return;
+          generationInitialViewportKeyRef.current = generationInitialViewportKey;
+          reactFlowRef.current?.setViewport(generationInitialViewport, { duration: 320 });
+          return;
+        }
+
         reactFlowRef.current?.fitView({
-          padding: isMobile ? 0.12 : 0.2,
+          padding: isGenerationView ? (isMobile ? 0.18 : 0.28) : (isMobile ? 0.12 : 0.2),
           includeHiddenNodes: false,
           duration: 320,
         });
@@ -648,7 +749,9 @@ export function FamilyTree({
       reactFlowRef.current?.setCenter(centerX, centerY, {
         zoom: isDirectFamilyView
           ? (isMobile ? DIRECT_FAMILY_TOKENS.MOBILE_ZOOM : DIRECT_FAMILY_TOKENS.DESKTOP_ZOOM)
-          : (isMobile ? 0.8 : 1.05),
+          : isGenerationView
+            ? (isMobile ? 0.72 : 0.88)
+            : (isMobile ? 0.8 : 1.05),
         duration: 800,
       });
     }, 50);
@@ -662,6 +765,9 @@ export function FamilyTree({
     NODE_HEIGHT,
     isMobile,
     isDirectFamilyView,
+    isGenerationView,
+    generationInitialViewport,
+    generationInitialViewportKey,
     directFamilyViewport,
     containerSize.width,
     containerSize.height,
@@ -680,8 +786,15 @@ export function FamilyTree({
     }
 
     if (!selectedPersonId) {
+      if (isGenerationView && generationInitialViewport) {
+        if (generationInitialViewportKeyRef.current === generationInitialViewportKey) return;
+        generationInitialViewportKeyRef.current = generationInitialViewportKey;
+        reactFlowRef.current.setViewport(generationInitialViewport, { duration: 180 });
+        return;
+      }
+
       reactFlowRef.current.fitView({
-        padding: isMobile ? 0.12 : 0.2,
+        padding: isGenerationView ? (isMobile ? 0.18 : 0.28) : (isMobile ? 0.12 : 0.2),
         includeHiddenNodes: false,
         duration: 180,
       });
@@ -692,6 +805,9 @@ export function FamilyTree({
     containerSize.height,
     isMobile,
     isDirectFamilyView,
+    isGenerationView,
+    generationInitialViewport,
+    generationInitialViewportKey,
     directFamilyViewport,
     selectedPersonId,
   ]);
@@ -769,13 +885,19 @@ export function FamilyTree({
       }
 
       if (!selectedPersonId && !isDirectFamilyView) {
+        if (isGenerationView && generationInitialViewport) {
+          generationInitialViewportKeyRef.current = generationInitialViewportKey;
+          instance.setViewport(generationInitialViewport);
+          return;
+        }
+
         instance.fitView({
-          padding: isMobile ? 0.12 : 0.2,
+          padding: isGenerationView ? (isMobile ? 0.18 : 0.28) : (isMobile ? 0.12 : 0.2),
           includeHiddenNodes: false,
         });
       }
     },
-    [selectedPersonId, isMobile, isDirectFamilyView, directFamilyViewport]
+    [selectedPersonId, isMobile, isDirectFamilyView, isGenerationView, directFamilyViewport, generationInitialViewport, generationInitialViewportKey]
   );
 
   const handleMove = useCallback(
@@ -884,11 +1006,15 @@ export function FamilyTree({
         translateExtent={directFamilyTranslateExtent}
         preventScrolling={isDirectFamilyView ? true : undefined}
         defaultViewport={{
-          x: isDirectFamilyView && directFamilyViewport ? directFamilyViewport.x : 0,
-          y: isDirectFamilyView && directFamilyViewport ? directFamilyViewport.y : 0,
+          x: isDirectFamilyView && directFamilyViewport
+            ? directFamilyViewport.x
+            : generationInitialViewport?.x ?? 0,
+          y: isDirectFamilyView && directFamilyViewport
+            ? directFamilyViewport.y
+            : generationInitialViewport?.y ?? 0,
           zoom: isDirectFamilyView
             ? directFamilyFittedZoom
-            : (isMobile ? 0.72 : 0.8),
+            : generationInitialViewport?.zoom ?? (isMobile ? 0.72 : 0.8),
         }}
         proOptions={{ hideAttribution: true }}
       >

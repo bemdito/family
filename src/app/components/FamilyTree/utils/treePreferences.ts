@@ -14,7 +14,7 @@ const STORAGE_KEYS = {
 export function readStoredViewMode(): TipoVisualizacaoArvore | null {
   try {
     const value = window.localStorage.getItem(STORAGE_KEYS.viewMode);
-    if (value === 'familiares-diretos' || value === 'lados' || value === 'geracoes' || value === 'lista') {
+    if (value === 'familiares-diretos' || value === 'geracoes' || value === 'lista') {
       return value;
     }
     return null;

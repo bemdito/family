@@ -12,6 +12,10 @@ import {
   DIRECT_FAMILY_RELATION_COLORS,
   DIRECT_FAMILY_STATUS_BORDER_COLORS,
 } from './directFamilyColors';
+import {
+  extractYear,
+  getPersonCardSecondaryText,
+} from './utils/personCardText';
 
 const DIRECT_FAMILY_PET_STYLE = {
   background: '#D97706',
@@ -119,16 +123,6 @@ function ActionButton({
       <span>{label}</span>
     </button>
   );
-}
-
-function extractYear(value?: string | number | null) {
-  if (value === null || value === undefined) return undefined;
-
-  const text = String(value).trim();
-  if (!text) return undefined;
-
-  const year = text.match(/(?:^|[^\d])(\d{4})(?:[^\d]|$)/)?.[1];
-  return year;
 }
 
 function getLifeYearsLabel(pessoa: PersonNodeData['pessoa']) {
@@ -246,10 +240,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
     return FAMILY_TREE_COLORS.CARD_BORDER_ALIVE;
   };
 
-  const secondaryText =
-    pessoa.local_atual ||
-    pessoa.local_nascimento ||
-    (pessoa.data_nascimento ? String(pessoa.data_nascimento) : undefined);
+  const secondaryText = getPersonCardSecondaryText(pessoa);
 
   const avatarContent = (avatarClassName: string, iconClassName: string) => {
     if (pessoa.foto_principal_url) {
@@ -318,7 +309,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
     const cardWidth = isCentralDirectNode ? DIRECT_FAMILY_TOKENS.CENTRAL_WIDTH : DIRECT_FAMILY_TOKENS.CARD_WIDTH;
     const cardHeight = isCentralDirectNode ? DIRECT_FAMILY_TOKENS.CENTRAL_HEIGHT : DIRECT_FAMILY_TOKENS.CARD_HEIGHT;
     const avatarSize = isCentralDirectNode ? DIRECT_FAMILY_TOKENS.CENTRAL_AVATAR_SIZE : DIRECT_FAMILY_TOKENS.AVATAR_SIZE;
-    const directSecondaryText = getLifeYearsLabel(pessoa) || secondaryText;
+    const directSecondaryText = secondaryText || getLifeYearsLabel(pessoa);
     const centralDetails = [
       getAgeLabel(pessoa.data_nascimento),
       pessoa.local_nascimento
@@ -422,7 +413,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
-          backgroundColor: pessoa.cor_bg_card || '#ffffff',
+          backgroundColor: '#ffffff',
           borderColor: getBorderColor(),
         }}
       >
@@ -449,7 +440,10 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
 
           <div className="min-w-0 flex-1">
             <div className="flex items-start gap-2">
-              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight" title={pessoa.nome_completo}>
+              <h3
+                className="min-w-0 flex-1 overflow-hidden text-ellipsis text-sm font-semibold leading-tight text-gray-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                title={pessoa.nome_completo}
+              >
                 {pessoa.nome_completo}
               </h3>
               {isCentralPerson && (
@@ -459,16 +453,9 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
               )}
             </div>
 
-            {pessoa.data_nascimento && (
-              <p className="mt-1 text-xs text-gray-600">
-                ✦ {pessoa.data_nascimento}
-                {pessoa.data_falecimento && ` - † ${pessoa.data_falecimento}`}
-              </p>
-            )}
-
-            {pessoa.local_nascimento && (
-              <p className="mt-0.5 truncate text-xs text-gray-500" title={pessoa.local_nascimento}>
-                📍 {pessoa.local_nascimento}
+            {secondaryText && (
+              <p className="mt-1 truncate text-xs text-gray-600" title={secondaryText}>
+                {secondaryText}
               </p>
             )}
 

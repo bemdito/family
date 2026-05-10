@@ -316,5 +316,5 @@ export function getStablePersonComparator(
 }
 
 export function getDefaultViewMode(): TipoVisualizacaoArvore {
-  return 'lados';
+  return 'geracoes';
 }

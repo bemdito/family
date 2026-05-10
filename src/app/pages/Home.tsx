@@ -97,7 +97,6 @@ import { toast } from 'sonner';
 
 const VIEW_MODE_OPTIONS: Array<{ value: TipoVisualizacaoArvore; label: string }> = [
   { value: 'familiares-diretos', label: 'Minha Árvore' },
-  { value: 'lados', label: 'Cônjuges' },
   { value: 'geracoes', label: 'Genealogia' },
   { value: 'lista', label: 'Lista por Gerações' },
 ];
@@ -148,7 +147,7 @@ export function Home() {
   const [notificationCount, setNotificationCount] = useState(0);
 
   const [viewMode, setViewMode] = useState<TipoVisualizacaoArvore>(() =>
-    user ? 'familiares-diretos' : 'lados'
+    user ? 'familiares-diretos' : 'geracoes'
   );
   const [activeGeneration, setActiveGeneration] = useState(0);
   const [generationColumns, setGenerationColumns] = useState<GenerationColumnMeta[]>([]);
@@ -164,6 +163,7 @@ export function Home() {
   const [connectionTarget, setConnectionTarget] = useState<Pessoa | null>(null);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
+  const [aiAnswer, setAiAnswer] = useState('');
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [selectedCuriosityPersonId, setSelectedCuriosityPersonId] = useState<string>('');
@@ -245,13 +245,8 @@ export function Home() {
   }, [user?.id, directRelativeFilterState]);
 
   useEffect(() => {
-    if (isMobile && viewMode === 'lados') {
-      setViewMode('geracoes');
-      return;
-    }
-
     if (!user && viewMode === 'familiares-diretos') {
-      setViewMode(isMobile ? 'geracoes' : 'lados');
+      setViewMode('geracoes');
       return;
     }
 
@@ -640,8 +635,8 @@ export function Home() {
   const curiosities = useMemo(() => calculateCuriosities(pessoas, relacionamentos), [pessoas, relacionamentos]);
 
   const availableModes = useMemo<TipoVisualizacaoArvore[]>(
-    () => (isMobile ? ['familiares-diretos', 'geracoes', 'lista'] : ['familiares-diretos', 'lados', 'geracoes', 'lista']),
-    [isMobile]
+    () => ['familiares-diretos', 'geracoes', 'lista'],
+    []
   );
 
   const canNavigateGenerations = isMobile && viewMode === 'geracoes' && generationColumns.length > 0;
@@ -716,7 +711,7 @@ export function Home() {
     () => getInsightByType(discoverInsights, 'historical_events'),
     [discoverInsights]
   );
-  const canAskAi = Boolean(aiQuestion.trim() || (selectedCuriosityPerson && selectedCuriosityTopics.length > 0));
+  const canAskAi = Boolean(!aiAnswer && (aiQuestion.trim() || (selectedCuriosityPerson && selectedCuriosityTopics.length > 0)));
   const toggleCuriosityTopic = useCallback((topic: CuriosityTopic) => {
     setSelectedCuriosityTopics((current) =>
       current.includes(topic)
@@ -730,6 +725,11 @@ export function Home() {
   function setDiscoverResultsEmpty() {
     setDiscoverError(null);
     setDiscoverInsights([]);
+  }
+
+  function handleBackToDiscoverForm() {
+    setDiscoverSubmitted(false);
+    setDiscoverError(null);
   }
 
   const handleAdvanceCuriosityPrompt = useCallback(async () => {
@@ -806,7 +806,7 @@ export function Home() {
         throw new Error('A IA não retornou uma resposta válida.');
       }
 
-      setAiQuestion(answer || 'Não encontrei uma resposta para essa pergunta.');
+      setAiAnswer(answer || 'Não encontrei uma resposta para essa pergunta.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível gerar a resposta agora.';
       setAiError(message);
@@ -828,6 +828,12 @@ export function Home() {
     selectedCuriosityTopics,
     stats,
   ]);
+
+  function handleNewAiQuestion() {
+    setAiQuestion('');
+    setAiAnswer('');
+    setAiError(null);
+  }
 
   const handleDiscoverConnection = useCallback(async () => {
     if (!connectionPersonOneId || !connectionPersonTwoId || connectionLoading) return;
@@ -1252,11 +1258,11 @@ export function Home() {
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={handleAdvanceCuriosityPrompt}
-                            disabled={!selectedCuriosityPerson || selectedCuriosityTopics.length === 0 || discoverLoading}
+                            onClick={discoverSubmitted ? handleBackToDiscoverForm : handleAdvanceCuriosityPrompt}
+                            disabled={!discoverSubmitted && (!selectedCuriosityPerson || selectedCuriosityTopics.length === 0 || discoverLoading)}
                             className="w-full bg-white sm:w-auto"
                           >
-                            {discoverLoading ? 'Carregando...' : 'Avançar'}
+                            {discoverLoading ? 'Carregando...' : discoverSubmitted ? 'Voltar' : 'Avançar'}
                           </Button>
                         </div>
                       </>
@@ -1271,15 +1277,6 @@ export function Home() {
                               Informações selecionadas sobre esta pessoa.
                             </p>
                           </div>
-
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => setDiscoverSubmitted(false)}
-                            className="w-full bg-white sm:w-auto"
-                          >
-                            Alterar seleção
-                          </Button>
                         </div>
 
                         {discoverLoading && (
@@ -1394,6 +1391,17 @@ export function Home() {
                             )}
                           </div>
                         )}
+
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleBackToDiscoverForm}
+                            className="w-full bg-white sm:w-auto"
+                          >
+                            Voltar
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </section>
@@ -1402,19 +1410,32 @@ export function Home() {
                 {activeCuriosityTab === 'pergunte-ia' && (
                   <section>
                     <h2 className="mb-2 text-base font-semibold text-gray-900">Pergunte à IA</h2>
-                    <Textarea
-                      value={aiQuestion}
-                      onChange={(event) => {
-                        setAiQuestion(event.target.value);
-                        setAiError(null);
-                      }}
-                      placeholder={AI_QUESTION_PLACEHOLDER}
-                      className="min-h-44 resize-y"
-                    />
-                    <div className="mt-3 flex justify-end">
-                      <Button onClick={handleAskAi} disabled={!canAskAi || aiLoading} className="w-full sm:w-auto">
-                        {aiLoading ? 'Perguntando...' : 'Perguntar'}
-                      </Button>
+                    {!aiAnswer ? (
+                      <Textarea
+                        value={aiQuestion}
+                        onChange={(event) => {
+                          setAiQuestion(event.target.value);
+                          setAiError(null);
+                        }}
+                        placeholder={AI_QUESTION_PLACEHOLDER}
+                        className="min-h-[170px] w-full resize-y rounded-lg border border-slate-400 bg-white px-4 py-3 text-sm leading-relaxed text-slate-900 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    ) : (
+                      <div className="min-h-[170px] w-full whitespace-pre-line rounded-lg border border-slate-500 bg-slate-100 px-4 py-3 text-sm leading-relaxed text-slate-800 shadow-inner">
+                        {aiAnswer}
+                      </div>
+                    )}
+                    <div className="mt-3 flex flex-col justify-end gap-2 sm:flex-row">
+                      {aiAnswer && (
+                        <Button type="button" variant="outline" onClick={handleNewAiQuestion} className="w-full bg-white sm:w-auto">
+                          Nova pergunta
+                        </Button>
+                      )}
+                      {!aiAnswer && (
+                        <Button onClick={handleAskAi} disabled={!canAskAi || aiLoading} className="w-full sm:w-auto">
+                          {aiLoading ? 'Perguntando...' : 'Perguntar'}
+                        </Button>
+                      )}
                     </div>
                     {aiError && (
                       <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
