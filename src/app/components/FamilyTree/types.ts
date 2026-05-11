@@ -23,6 +23,19 @@ export type DirectRelativeGroup =
 
 export type DirectRelativeFilters = Record<DirectRelativeGroup, boolean>;
 
+export type GenealogyFilterKey =
+  | 'generation1'
+  | 'generation2'
+  | 'generation3Family'
+  | 'generation3Spouses'
+  | 'generation4Family'
+  | 'generation4Spouses'
+  | 'generation5Family'
+  | 'generation5Spouses'
+  | 'generation6';
+
+export type GenealogyFilters = Record<GenealogyFilterKey, boolean>;
+
 export interface MarriageNodeDetails {
   id?: string;
   marriageKey: string;
@@ -148,6 +161,18 @@ export const DEFAULT_DIRECT_RELATIVE_FILTERS: DirectRelativeFilters = {
   sobrinhos: true,
   tios: true,
   primos: true,
+};
+
+export const DEFAULT_GENEALOGY_FILTERS: GenealogyFilters = {
+  generation1: true,
+  generation2: true,
+  generation3Family: true,
+  generation3Spouses: true,
+  generation4Family: true,
+  generation4Spouses: true,
+  generation5Family: true,
+  generation5Spouses: true,
+  generation6: true,
 };
 
 export const TREE_CONSTANTS: LayoutConstants = {

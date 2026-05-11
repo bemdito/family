@@ -43,17 +43,17 @@ export function getPersonCardSecondaryText(pessoa: Pick<Pessoa, 'data_nascimento
   const deathYear = extractYear(pessoa.data_falecimento);
 
   if (hasDeathDate(pessoa.data_falecimento)) {
-    if (birthYear && deathYear) return `* ${birthYear} - ✝ ${deathYear}`;
-    if (deathYear) return `* ✝ ${deathYear}`;
-    if (birthYear) return `* ${birthYear}`;
+    if (birthYear && deathYear) return `⭐ ${birthYear} - ✝ ${deathYear}`;
+    if (deathYear) return `⭐ ✝ ${deathYear}`;
+    if (birthYear) return `⭐ ${birthYear}`;
   }
 
   const birthPlace = normalizeBirthPlace(pessoa.local_nascimento);
   const birthDate = formatDateBR(pessoa.data_nascimento);
 
-  if (birthPlace && birthDate) return `* ${birthPlace}, ${birthDate}`;
-  if (birthPlace) return `* ${birthPlace}`;
-  if (birthDate) return `* ${birthDate}`;
+  if (birthPlace && birthDate) return `⭐ ${birthPlace}, ${birthDate}`;
+  if (birthPlace) return `⭐ ${birthPlace}`;
+  if (birthDate) return `⭐ ${birthDate}`;
 
   return undefined;
 }

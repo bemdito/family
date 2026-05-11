@@ -29,8 +29,10 @@ import {
 import {
   DEFAULT_EDGE_FILTERS,
   DEFAULT_DIRECT_RELATIVE_FILTERS,
+  DEFAULT_GENEALOGY_FILTERS,
   DirectRelativeFilters,
   EdgeFilters,
+  GenealogyFilters,
   TREE_CONSTANTS,
   MarriageNodeDetails,
 } from './types';
@@ -48,6 +50,9 @@ interface FamilyTreeProps {
   selectedPersonId?: string;
   edgeFilters?: EdgeFilters;
   directRelativeFilters?: DirectRelativeFilters;
+  genealogyFilters?: GenealogyFilters;
+  viewMode: TreeViewMode;
+  onViewModeChange: (mode: TreeViewMode) => void;
   centralPersonId?: string;
   isMobile?: boolean;
   layoutRevision?: number;
@@ -71,8 +76,8 @@ const DIRECT_FAMILY_VIEWPORT_PADDING = 18;
 const DIRECT_FAMILY_MOBILE_VIEWPORT_PADDING = 16;
 const DIRECT_FAMILY_TRANSLATE_PADDING = 120;
 const DIRECT_FAMILY_MOBILE_TRANSLATE_PADDING = 80;
-const GENEALOGY_MIN_ZOOM = 0.35;
-const GENEALOGY_MOBILE_MIN_ZOOM = 0.28;
+const GENEALOGY_MIN_ZOOM = 0.12;
+const GENEALOGY_MOBILE_MIN_ZOOM = 0.06;
 const GENEALOGY_MAX_ZOOM = 2;
 const GENEALOGY_MOBILE_MAX_ZOOM = 1.7;
 const GENEALOGY_TRANSLATE_PADDING = 220;
@@ -203,20 +208,16 @@ function getDirectFamilyViewport(
 function getGenealogyViewport(
   bounds: FlowBounds,
   containerWidth: number,
-  containerHeight: number,
+  _containerHeight: number,
   isMobile: boolean
 ): Viewport {
   const paddingX = isMobile ? 48 : 80;
-  const paddingY = isMobile ? 82 : 110;
   const topOffset = isMobile ? 72 : 95;
-  const zoomBoost = isMobile ? 0.96 : 1.04;
-  const minZoom = isMobile ? GENEALOGY_MOBILE_MIN_ZOOM : 0.45;
-  const maxZoom = isMobile ? 1 : 1.15;
+  const minZoom = isMobile ? GENEALOGY_MOBILE_MIN_ZOOM : GENEALOGY_MIN_ZOOM;
+  const maxZoom = isMobile ? GENEALOGY_MOBILE_MAX_ZOOM : GENEALOGY_MAX_ZOOM;
   const paddedWidth = bounds.width + paddingX * 2;
-  const paddedHeight = bounds.height + paddingY * 2;
   const zoomX = containerWidth / paddedWidth;
-  const zoomY = containerHeight / paddedHeight;
-  const zoom = Math.min(maxZoom, Math.max(minZoom, Math.min(zoomX, zoomY) * zoomBoost));
+  const zoom = Math.max(minZoom, Math.min(maxZoom, zoomX));
   const centerX = bounds.x + bounds.width / 2;
 
   return {
@@ -376,6 +377,9 @@ export function FamilyTree({
   selectedPersonId,
   edgeFilters = DEFAULT_EDGE_FILTERS,
   directRelativeFilters = DEFAULT_DIRECT_RELATIVE_FILTERS,
+  genealogyFilters = DEFAULT_GENEALOGY_FILTERS,
+  viewMode,
+  onViewModeChange,
   centralPersonId,
   isMobile = false,
   layoutRevision = 0,
@@ -384,7 +388,6 @@ export function FamilyTree({
   const reactFlowRef = useRef<ReactFlowInstance | null>(null);
   const directFamilyRecenteringRef = useRef(false);
   const directFamilyViewportRef = useRef<Viewport | null>(null);
-  const [viewMode, setViewMode] = useState<TreeViewMode>('minha-arvore');
   const [directFamilyFitZoom, setDirectFamilyFitZoom] = useState<number | null>(null);
   const [directFamilyCurrentZoom, setDirectFamilyCurrentZoom] = useState<number | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -414,11 +417,12 @@ export function FamilyTree({
       selectedPersonId,
       edgeFilters,
       directRelativeFilters,
+      genealogyFilters,
       centralPersonId: effectiveCentralPersonId,
       isMobile,
       viewMode,
     });
-  }, [pessoas, relacionamentos, selectedPersonId, edgeFilters, directRelativeFilters, effectiveCentralPersonId, isMobile, viewMode]);
+  }, [pessoas, relacionamentos, selectedPersonId, edgeFilters, directRelativeFilters, genealogyFilters, effectiveCentralPersonId, isMobile, viewMode]);
 
   const layoutResult = useMemo(() => {
     const graph = buildTreeGraph({
@@ -435,7 +439,9 @@ export function FamilyTree({
     });
 
     if (viewMode === 'genealogia') {
-      return genealogyColumnsLayout(graph);
+      return genealogyColumnsLayout(graph, {
+        filters: genealogyFilters,
+      });
     }
 
     return directFamilyDistributedLayout(graph, {
@@ -455,6 +461,7 @@ export function FamilyTree({
     selectedPersonId,
     edgeFilters,
     directRelativeFilters,
+    genealogyFilters,
     effectiveCentralPersonId,
     viewMode,
   ]);
@@ -720,7 +727,7 @@ export function FamilyTree({
       ].join(' ')}
       style={{ width: '100%', height: '100%', minHeight: '500px' }}
     >
-      <ViewModeToggle value={viewMode} onChange={setViewMode} />
+      <ViewModeToggle value={viewMode} onChange={onViewModeChange} />
       <ReactFlow
         nodes={nodes}
         edges={edges}

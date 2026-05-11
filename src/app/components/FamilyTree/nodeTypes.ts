@@ -3,6 +3,7 @@ import { Handle, NodeProps, NodeTypes, Position } from 'reactflow';
 import { PersonNode } from './PersonNode';
 import { MarriageNode } from './MarriageNode';
 import { DirectFamilyLabelNode } from './DirectFamilyLabelNode';
+import { GenealogyFamilyConnectorNode } from './GenealogyFamilyConnectorNode';
 import { FAMILY_TREE_COLORS } from './visualTokens';
 import {
   DIRECT_FAMILY_GROUP_CONTAINER_BORDER,
@@ -118,4 +119,5 @@ export const nodeTypes: NodeTypes = {
   directFamilyAnchorNode: DirectFamilyAnchorNode,
   directFamilyGroupBoxNode: DirectFamilyGroupBoxNode,
   directFamilyLegendNode: DirectFamilyLegendNode,
+  genealogyFamilyConnectorNode: GenealogyFamilyConnectorNode,
 };
