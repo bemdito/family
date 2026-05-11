@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { flushSync } from 'react-dom';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 
 import { FamilyTree } from '../components/FamilyTree/FamilyTree';
 import { ViewMarriageModal } from '../components/FamilyTree/modals/ViewMarriageModal';
@@ -10,12 +10,9 @@ import {
 } from '../components/FamilyTree/modals/AddConnectionModal';
 import { useIsMobile } from '../components/FamilyTree/hooks/useIsMobile';
 import {
-  readStoredViewMode,
-  storeViewMode,
-  readStoredActiveGeneration,
-  storeActiveGeneration,
   readDirectRelativeFilters,
   storeDirectRelativeFilters,
+  migrateLegacyTreeViewPreferences,
 } from '../components/FamilyTree/utils/treePreferences';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
@@ -41,17 +38,15 @@ import {
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
 import {
-  atualizarGeracaoManualPessoa,
   obterTodasPessoas,
   obterTodosRelacionamentos,
   buscarPessoas,
 } from '../services/dataService';
-import { Pessoa, Relacionamento, TipoVisualizacaoArvore } from '../types';
+import { Pessoa, Relacionamento } from '../types';
 import {
   DEFAULT_DIRECT_RELATIVE_FILTERS,
   DirectRelativeFilters,
   DirectRelativeGroup,
-  GenerationColumnMeta,
   MarriageNodeDetails,
 } from '../components/FamilyTree/types';
 import { FAMILY_TREE_COLORS, hasDeathDate } from '../components/FamilyTree/visualTokens';
@@ -95,12 +90,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const VIEW_MODE_OPTIONS: Array<{ value: TipoVisualizacaoArvore; label: string }> = [
-  { value: 'familiares-diretos', label: 'Minha Árvore' },
-  { value: 'geracoes', label: 'Genealogia' },
-  { value: 'lista', label: 'Lista por Gerações' },
-];
-
 const AI_QUESTION_EXAMPLES = [
   'Quem são meus bisavós paternos?',
   'Quantas pessoas da família nasceram em Recife?',
@@ -129,12 +118,15 @@ type CuriosidadesTab = 'voce-sabia' | 'descubra' | 'pergunte-ia' | 'conexao';
 
 export function Home() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const queryPersonId = searchParams.get('pessoa')?.trim() || undefined;
   const isMobile = useIsMobile();
   const { user, signOut } = useAuth();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState<string | undefined>();
   const [linkedPersonId, setLinkedPersonId] = useState<string | undefined>();
+  const [treeFocusPersonId, setTreeFocusPersonId] = useState<string | undefined>();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [pessoas, setPessoas] = useState<Pessoa[]>(() => homeTreeDataCache?.pessoas ?? []);
   const [relacionamentos, setRelacionamentos] = useState<Relacionamento[]>(() => homeTreeDataCache?.relacionamentos ?? []);
@@ -146,11 +138,6 @@ export function Home() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
 
-  const [viewMode, setViewMode] = useState<TipoVisualizacaoArvore>(() =>
-    user ? 'familiares-diretos' : 'geracoes'
-  );
-  const [activeGeneration, setActiveGeneration] = useState(0);
-  const [generationColumns, setGenerationColumns] = useState<GenerationColumnMeta[]>([]);
   const [directRelativeFilterState, setDirectRelativeFilterState] = useState<{
     userId?: string;
     filters: DirectRelativeFilters;
@@ -219,16 +206,7 @@ export function Home() {
   }, [sidebarOpen, isMobile]);
 
   useEffect(() => {
-    const savedViewMode = readStoredViewMode();
-    const savedActiveGeneration = readStoredActiveGeneration();
-
-    if (savedViewMode) {
-      setViewMode(savedViewMode);
-    }
-
-    if (typeof savedActiveGeneration === 'number') {
-      setActiveGeneration(savedActiveGeneration);
-    }
+    migrateLegacyTreeViewPreferences();
   }, []);
 
   useEffect(() => {
@@ -243,19 +221,6 @@ export function Home() {
 
     storeDirectRelativeFilters(directRelativeFilterState.userId, directRelativeFilterState.filters);
   }, [user?.id, directRelativeFilterState]);
-
-  useEffect(() => {
-    if (!user && viewMode === 'familiares-diretos') {
-      setViewMode('geracoes');
-      return;
-    }
-
-    storeViewMode(viewMode);
-  }, [viewMode, isMobile, user]);
-
-  useEffect(() => {
-    storeActiveGeneration(activeGeneration);
-  }, [activeGeneration]);
 
   useEffect(() => {
     if (homeTreeDataCache) {
@@ -350,9 +315,8 @@ export function Home() {
       try {
         const { data } = await getPrimaryLinkedPerson(user.id);
         setLinkedPersonId(data?.pessoa_id);
-        if (data?.pessoa_id) {
+        if (data?.pessoa_id && !queryPersonId) {
           setSelectedPersonId(data.pessoa_id);
-          setViewMode('familiares-diretos');
         }
       } catch (error) {
         console.error('Erro ao carregar vínculo do membro:', error);
@@ -361,7 +325,23 @@ export function Home() {
     };
 
     loadLinkedPerson();
-  }, [user?.id]);
+  }, [queryPersonId, user?.id]);
+
+  useEffect(() => {
+    if (!queryPersonId || pessoas.length === 0) return;
+
+    const queryPersonExists = pessoas.some((pessoa) => pessoa.id === queryPersonId);
+
+    if (!queryPersonExists) {
+      setTreeFocusPersonId(undefined);
+      setSelectedPersonId(linkedPersonId || pessoas[0]?.id);
+      navigate('/', { replace: true });
+      return;
+    }
+
+    setTreeFocusPersonId(queryPersonId);
+    setSelectedPersonId(queryPersonId);
+  }, [linkedPersonId, navigate, pessoas, queryPersonId]);
 
   useEffect(() => {
     if (selectedCuriosityPersonId || pessoas.length === 0) return;
@@ -425,17 +405,6 @@ export function Home() {
 
     return () => window.clearTimeout(timeoutId);
   }, [searchTerm]);
-
-  useEffect(() => {
-    if (!isMobile || generationColumns.length === 0) return;
-
-    const maxIndex = generationColumns.length - 1;
-    setActiveGeneration((prev) => Math.min(Math.max(prev, 0), maxIndex));
-  }, [isMobile, generationColumns]);
-
-  const handleViewModeChange = useCallback((nextMode: TipoVisualizacaoArvore) => {
-    setViewMode(nextMode);
-  }, []);
 
   const navigateToPersonProfile = useCallback(
     (personId: string) => {
@@ -510,37 +479,6 @@ export function Home() {
     setConnectionTarget(null);
   }, []);
 
-  const handlePersonGenerationChange = useCallback(async (personId: string, generation: number) => {
-    const nextGeneration = Math.min(7, Math.max(1, generation));
-    const previousPessoa = pessoas.find((pessoa) => pessoa.id === personId);
-
-    if (!previousPessoa) {
-      return;
-    }
-
-    setPessoas((prevPessoas) =>
-      prevPessoas.map((pessoa) =>
-        pessoa.id === personId
-          ? { ...pessoa, manual_generation: nextGeneration }
-          : pessoa
-      )
-    );
-
-    try {
-      await atualizarGeracaoManualPessoa(personId, nextGeneration);
-      toast.success(`Geração atualizada para Geração ${nextGeneration}.`);
-    } catch (error) {
-      setPessoas((prevPessoas) =>
-        prevPessoas.map((pessoa) =>
-          pessoa.id === personId
-            ? previousPessoa
-            : pessoa
-        )
-      );
-      toast.error(error instanceof Error ? error.message : 'Erro ao salvar geração manual.');
-    }
-  }, [pessoas]);
-
   const handleSignOut = useCallback(async () => {
     await signOut();
     toast.success('Sessão encerrada.');
@@ -571,9 +509,31 @@ export function Home() {
     }));
   }, [user?.id]);
 
+  const centralReferencePersonId = treeFocusPersonId || linkedPersonId || selectedPersonId || pessoas[0]?.id;
+  const centralReferencePerson = useMemo(
+    () => pessoas.find((pessoa) => pessoa.id === centralReferencePersonId),
+    [centralReferencePersonId, pessoas]
+  );
+
+  const handleOpenPersonTree = useCallback((personId: string) => {
+    setTreeFocusPersonId(personId);
+    setSelectedPersonId(personId);
+    setAiDialogOpen(false);
+    if (isMobile) {
+      setSidebarOpen(false);
+      setLegendOpen(false);
+    }
+    navigate(`/?pessoa=${encodeURIComponent(personId)}`, { replace: false });
+
+    window.setTimeout(() => {
+      setTreeLayoutRevision((revision) => revision + 1);
+      window.dispatchEvent(new Event('resize'));
+    }, 80);
+  }, [isMobile, navigate]);
+
   const pessoasVisiveis = useMemo(() => {
     return pessoas.filter((pessoa) => {
-      if (viewMode === 'familiares-diretos' && linkedPersonId && pessoa.id === linkedPersonId) {
+      if (centralReferencePersonId && pessoa.id === centralReferencePersonId) {
         return true;
       }
 
@@ -587,7 +547,7 @@ export function Home() {
 
       return personFilters.vivos;
     });
-  }, [pessoas, personFilters, linkedPersonId, viewMode]);
+  }, [centralReferencePersonId, pessoas, personFilters]);
 
   const stats = useMemo(() => {
     const pessoasVivas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && !hasDeathDate(p.data_falecimento));
@@ -634,17 +594,7 @@ export function Home() {
 
   const curiosities = useMemo(() => calculateCuriosities(pessoas, relacionamentos), [pessoas, relacionamentos]);
 
-  const availableModes = useMemo<TipoVisualizacaoArvore[]>(
-    () => ['familiares-diretos', 'geracoes', 'lista'],
-    []
-  );
-
-  const canNavigateGenerations = isMobile && viewMode === 'geracoes' && generationColumns.length > 0;
-  const activeGenerationMeta = generationColumns.find((column) => column.level === activeGeneration);
-  const maxGenerationIndex = generationColumns.length - 1;
-
   const directRelativeFilters = directRelativeFilterState.filters;
-  const centralReferencePersonId = linkedPersonId || selectedPersonId;
   const linkedPerson = useMemo(
     () => pessoas.find((pessoa) => pessoa.id === linkedPersonId),
     [pessoas, linkedPersonId]
@@ -659,6 +609,8 @@ export function Home() {
     ''
   ).trim();
   const displayName = getShortDisplayName(fullDisplayName);
+  const centralDisplayName = getShortDisplayName(centralReferencePerson?.nome_completo || '');
+  const treeTitleName = centralDisplayName || displayName || 'Pessoa central';
   const avatarUrl =
     linkedPerson?.foto_principal_url ||
     profile?.avatar_url ||
@@ -786,7 +738,7 @@ export function Home() {
             stats,
             curiosities,
             centralPersonId: centralReferencePersonId,
-            centralPersonName: fullDisplayName || displayName,
+            centralPersonName: centralReferencePerson?.nome_completo || fullDisplayName || displayName,
             directRelationCounts,
             selectedCuriosityPerson,
             selectedCuriosityTopics,
@@ -818,6 +770,7 @@ export function Home() {
     aiLoading,
     aiQuestion,
     centralReferencePersonId,
+    centralReferencePerson,
     curiosities,
     directRelationCounts,
     displayName,
@@ -881,34 +834,14 @@ export function Home() {
         <div className="mx-auto flex max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
           <div className="flex min-w-0 items-center gap-3 lg:w-56">
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-bold text-gray-900 lg:text-xl">{displayName || 'Árvore Genealógica'}</h1>
-              <p className="truncate text-xs text-gray-500 lg:text-sm">Árvore Genealógica</p>
+              <h1 className="truncate text-lg font-bold text-gray-900 lg:text-xl">
+                Linha Genealógica de {treeTitleName}
+              </h1>
+              <p className="truncate text-xs text-gray-500 lg:text-sm">Minha Árvore</p>
             </div>
           </div>
 
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap">
-            <div className="w-[170px] shrink-0">
-              <Select value={viewMode} onValueChange={(value) => handleViewModeChange(value as TipoVisualizacaoArvore)}>
-                <SelectTrigger
-                  className={[
-                    'h-9 rounded-md border px-3 shadow-none focus-visible:ring-2 focus-visible:ring-offset-2',
-                    viewMode === 'familiares-diretos'
-                      ? 'border-gray-700 bg-gray-800 text-white hover:bg-gray-700 [&_svg]:text-white [&_svg]:stroke-white'
-                      : 'border-gray-300 bg-white text-gray-900 hover:bg-gray-50 [&_svg]:text-gray-500 [&_svg]:stroke-gray-500',
-                  ].join(' ')}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {VIEW_MODE_OPTIONS.filter((option) => availableModes.includes(option.value)).map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             <Button
               variant="outline"
               className="h-9 shrink-0 gap-2 px-3"
@@ -1000,39 +933,6 @@ export function Home() {
         </div>
       </header>
 
-      {canNavigateGenerations && (
-        <div className="border-b border-gray-200 bg-white px-4 py-2">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setActiveGeneration((prev) => Math.max(prev - 1, 0))}
-              disabled={activeGeneration <= 0}
-              title="Geração anterior"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="min-w-0 text-center">
-              <p className="truncate text-sm font-semibold text-gray-900">
-                {activeGenerationMeta?.label || `Geração ${activeGeneration + 1}`}
-              </p>
-              <p className="text-xs text-gray-500">
-                {activeGeneration + 1} de {maxGenerationIndex + 1}
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setActiveGeneration((prev) => Math.min(prev + 1, maxGenerationIndex))}
-              disabled={activeGeneration >= maxGenerationIndex}
-              title="Próxima geração"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-
       {isMobile && legendOpen && (
         <section className="border-b border-gray-200 bg-white px-4 py-3">
           <FamilyTreeLegend compact />
@@ -1049,13 +949,11 @@ export function Home() {
           >
             {sidebarOpen && (
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-                {viewMode === 'familiares-diretos' && (
-                  <DirectRelationKpiGrid
-                    filters={directRelativeFilters}
-                    counts={directRelationCounts}
-                    onToggle={toggleDirectRelativeFilter}
-                  />
-                )}
+                <DirectRelationKpiGrid
+                  filters={directRelativeFilters}
+                  counts={directRelationCounts}
+                  onToggle={toggleDirectRelativeFilter}
+                />
 
                 <LifeStatusKpiGrid
                   vivos={stats.pessoasVivas}
@@ -1114,13 +1012,9 @@ export function Home() {
               selectedPersonId={selectedPersonId}
               edgeFilters={edgeFilters}
               directRelativeFilters={directRelativeFilters}
-              centralPersonId={linkedPersonId}
-              viewMode={viewMode}
-              activeGeneration={activeGeneration}
+              centralPersonId={centralReferencePersonId}
               isMobile={isMobile}
               layoutRevision={treeLayoutRevision}
-              onGenerationColumnsChange={setGenerationColumns}
-              onPersonGenerationChange={handlePersonGenerationChange}
             />
           )}
         </section>
@@ -1379,9 +1273,7 @@ export function Home() {
                                     variant="outline"
                                     className="w-full bg-white sm:w-auto"
                                     onClick={() => {
-                                      setSelectedPersonId(selectedCuriosityPerson.id);
-                                      setViewMode('familiares-diretos');
-                                      setAiDialogOpen(false);
+                                      handleOpenPersonTree(selectedCuriosityPerson.id);
                                     }}
                                   >
                                     Abrir árvore
@@ -1779,7 +1671,6 @@ function UserMenu({
 }
 
 function FilterPanel({
-  viewMode,
   personFilters,
   edgeFilters,
   directRelativeFilters,
@@ -1789,7 +1680,6 @@ function FilterPanel({
   onToggleEdge,
   onToggleDirect,
 }: {
-  viewMode: TipoVisualizacaoArvore;
   personFilters: {
     vivos: boolean;
     falecidos: boolean;
@@ -1843,7 +1733,7 @@ function FilterPanel({
         </div>
       </div>
 
-      {viewMode === 'familiares-diretos' && showDirectRelativeFilters && (
+      {showDirectRelativeFilters && (
         <div>
           <h2 className="mb-3 text-sm font-semibold text-gray-900">Familiares Diretos</h2>
           <DirectRelativeFilterGrid

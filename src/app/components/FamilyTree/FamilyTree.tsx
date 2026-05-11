@@ -3,13 +3,10 @@ import ReactFlow, {
   EdgeTypes,
   Controls,
   ControlButton,
-  Background,
-  MiniMap,
   useNodesState,
   useEdgesState,
   ReactFlowInstance,
   Node,
-  NodeDragHandler,
   CoordinateExtent,
   Viewport,
 } from 'reactflow';
@@ -17,12 +14,10 @@ import 'reactflow/dist/style.css';
 import { FileDown, Minus, Plus, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Pessoa, Relacionamento, TipoVisualizacaoArvore } from '../../types';
+import { Pessoa, Relacionamento } from '../../types';
 import { nodeTypes } from './nodeTypes';
 import { OrthogonalChildEdge } from './OrthogonalChildEdge';
 import { buildTreeGraph } from './buildTreeGraph';
-import { generationColumnsLayout } from './layouts/generationColumnsLayout';
-import { chronologicalListLayout } from './layouts/chronologicalListLayout';
 import { directFamilyDistributedLayout } from './layouts/directFamilyDistributedLayout';
 import {
   injectExportSafeCss,
@@ -34,11 +29,9 @@ import {
   DirectRelativeFilters,
   EdgeFilters,
   TREE_CONSTANTS,
-  getDefaultViewMode,
   MarriageNodeDetails,
-  GenerationColumnMeta,
 } from './types';
-import { DIRECT_FAMILY_TOKENS, FAMILY_TREE_COLORS, hasDeathDate } from './visualTokens';
+import { DIRECT_FAMILY_TOKENS } from './visualTokens';
 
 interface FamilyTreeProps {
   pessoas: Pessoa[];
@@ -53,12 +46,8 @@ interface FamilyTreeProps {
   edgeFilters?: EdgeFilters;
   directRelativeFilters?: DirectRelativeFilters;
   centralPersonId?: string;
-  viewMode?: TipoVisualizacaoArvore;
-  activeGeneration?: number;
   isMobile?: boolean;
   layoutRevision?: number;
-  onGenerationColumnsChange?: (columns: GenerationColumnMeta[]) => void;
-  onPersonGenerationChange?: (personId: string, generation: number) => Promise<void> | void;
 }
 
 const edgeTypes: EdgeTypes = {
@@ -68,36 +57,7 @@ const edgeTypes: EdgeTypes = {
   spouseEdge: OrthogonalChildEdge,
 };
 
-function getLayoutByViewMode(
-  viewMode: TipoVisualizacaoArvore,
-  graph: ReturnType<typeof buildTreeGraph>,
-  options?: {
-    centralPersonId?: string;
-    directRelativeFilters?: DirectRelativeFilters;
-  }
-) {
-  if (viewMode === 'familiares-diretos') {
-    return directFamilyDistributedLayout(graph, {
-      centralPersonId: options?.centralPersonId,
-      filters: options?.directRelativeFilters,
-    });
-  }
-
-  if (viewMode === 'lista') {
-    return chronologicalListLayout(graph);
-  }
-
-  if (viewMode === 'geracoes') {
-    return generationColumnsLayout(graph);
-  }
-
-  return generationColumnsLayout(graph);
-}
-
 const MARRIAGE_NODE_SIZE = TREE_CONSTANTS.MARRIAGE_NODE_WIDTH;
-const INITIAL_MOBILE_CENTER_Y = TREE_CONSTANTS.INITIAL_Y + TREE_CONSTANTS.NODE_HEIGHT;
-const MIN_MANUAL_GENERATION = 1;
-const MAX_MANUAL_GENERATION = 7;
 const DIRECT_FAMILY_MAX_ZOOM = 2;
 const DIRECT_FAMILY_MOBILE_MAX_ZOOM = 1.5;
 const DIRECT_FAMILY_FALLBACK_MIN_ZOOM = 0.28;
@@ -107,42 +67,12 @@ const DIRECT_FAMILY_VIEWPORT_PADDING = 18;
 const DIRECT_FAMILY_MOBILE_VIEWPORT_PADDING = 16;
 const DIRECT_FAMILY_TRANSLATE_PADDING = 120;
 const DIRECT_FAMILY_MOBILE_TRANSLATE_PADDING = 80;
-const GENERATION_INITIAL_VISIBLE_COLUMNS = 4;
-const GENERATION_INITIAL_PADDING = 80;
-const GENERATION_INITIAL_RIGHT_PADDING = 160;
-const GENERATION_INITIAL_BOTTOM_PADDING = 120;
-const GENERATION_INITIAL_MIN_ZOOM = 0.25;
-const GENERATION_INITIAL_MAX_ZOOM = 0.85;
 
 interface FlowBounds {
   x: number;
   y: number;
   width: number;
   height: number;
-}
-
-function clampManualGeneration(generation: number) {
-  return Math.min(MAX_MANUAL_GENERATION, Math.max(MIN_MANUAL_GENERATION, generation));
-}
-
-function getGenerationFromNodeX(nodeX: number, columns: GenerationColumnMeta[]) {
-  const sortedColumns = [...columns].sort((a, b) => a.level - b.level);
-  const firstColumn = sortedColumns[0];
-
-  if (!firstColumn) {
-    return MIN_MANUAL_GENERATION;
-  }
-
-  const columnGap =
-    sortedColumns.length > 1
-      ? sortedColumns[1].x - sortedColumns[0].x
-      : TREE_CONSTANTS.HORIZONTAL_GAP_BETWEEN_GENERATIONS;
-
-  const nodeCenterX = nodeX + TREE_CONSTANTS.NODE_WIDTH / 2;
-  const firstColumnCenterX = firstColumn.x + TREE_CONSTANTS.NODE_WIDTH / 2;
-  const detectedLevel = Math.round((nodeCenterX - firstColumnCenterX) / columnGap + firstColumn.level);
-
-  return clampManualGeneration(detectedLevel + 1);
 }
 
 function getNodeRenderSize(node: Node, fallbackWidth: number, fallbackHeight: number) {
@@ -267,66 +197,6 @@ function getDirectFamilyTranslateExtent(bounds: FlowBounds, padding: number): Co
   ];
 }
 
-function getGenerationInitialViewport({
-  columns,
-  nodes,
-  containerWidth,
-  containerHeight,
-  nodeWidth,
-  nodeHeight,
-}: {
-  columns: GenerationColumnMeta[];
-  nodes: Node[];
-  containerWidth: number;
-  containerHeight: number;
-  nodeWidth: number;
-  nodeHeight: number;
-}): Viewport | null {
-  if (columns.length === 0 || nodes.length === 0 || containerWidth <= 0 || containerHeight <= 0) {
-    return null;
-  }
-
-  const sortedColumns = [...columns].sort((a, b) => a.x - b.x);
-  const visibleColumns = sortedColumns.slice(0, Math.min(GENERATION_INITIAL_VISIBLE_COLUMNS, sortedColumns.length));
-  const firstColumn = visibleColumns[0];
-  const lastColumn = visibleColumns[visibleColumns.length - 1];
-
-  if (!firstColumn || !lastColumn) return null;
-
-  const minX = firstColumn.x - GENERATION_INITIAL_PADDING;
-  const maxX = lastColumn.x + nodeWidth + GENERATION_INITIAL_RIGHT_PADDING;
-  const firstColumnLeft = firstColumn.x - nodeWidth / 2;
-  const lastColumnRight = lastColumn.x + nodeWidth * 1.5;
-  const nodesForY = nodes.filter((node) => {
-    if (node.hidden || node.type === 'directFamilyAnchorNode') return false;
-    const { width } = getNodeRenderSize(node, nodeWidth, nodeHeight);
-    const centerX = node.position.x + width / 2;
-    return centerX >= firstColumnLeft && centerX <= lastColumnRight;
-  });
-  const yBounds = getFlowBounds(nodesForY.length > 0 ? nodesForY : nodes, nodeWidth, nodeHeight);
-
-  if (!yBounds) return null;
-
-  const minY = yBounds.y - GENERATION_INITIAL_PADDING;
-  const maxY = yBounds.y + yBounds.height + GENERATION_INITIAL_BOTTOM_PADDING;
-  const boundsWidth = Math.max(1, maxX - minX);
-  const boundsHeight = Math.max(1, maxY - minY);
-  const zoomX = containerWidth / (boundsWidth + GENERATION_INITIAL_PADDING * 2);
-  const zoomY = containerHeight / (boundsHeight + GENERATION_INITIAL_PADDING * 2);
-  const zoom = Math.max(
-    GENERATION_INITIAL_MIN_ZOOM,
-    Math.min(zoomX, zoomY, GENERATION_INITIAL_MAX_ZOOM)
-  );
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-
-  return {
-    x: containerWidth / 2 - centerX * zoom,
-    y: containerHeight / 2 - centerY * zoom,
-    zoom,
-  };
-}
-
 function getExportableFlowElement(container: HTMLDivElement | null) {
   return container?.querySelector('.react-flow') as HTMLElement | null;
 }
@@ -372,8 +242,6 @@ async function captureVisibleTree(container: HTMLDivElement | null) {
 }
 
 async function printVisibleTree(container: HTMLDivElement | null) {
-  const canvas = await captureVisibleTree(container);
-  const imageUrl = canvas.toDataURL('image/png');
   const printWindow = window.open('', '_blank');
 
   if (!printWindow) {
@@ -381,6 +249,31 @@ async function printVisibleTree(container: HTMLDivElement | null) {
   }
 
   printWindow.document.write(`<!doctype html>
+<html>
+  <head>
+    <title>Preparando impressão</title>
+    <style>
+      html, body { margin: 0; min-height: 100%; background: #f8fafc; color: #0f172a; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      body { display: flex; align-items: center; justify-content: center; }
+      p { margin: 0; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <p>Preparando impressão da árvore...</p>
+  </body>
+</html>`);
+  printWindow.document.close();
+
+  try {
+    const canvas = await captureVisibleTree(container);
+    const imageUrl = canvas.toDataURL('image/png');
+
+    if (printWindow.closed) {
+      throw new Error('A janela de impressão foi fechada antes da conclusão.');
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
 <html>
   <head>
     <title>Imprimir árvore</title>
@@ -397,13 +290,25 @@ async function printVisibleTree(container: HTMLDivElement | null) {
   </head>
   <body>
     <img src="${imageUrl}" alt="Área visível da árvore genealógica" />
+    <script>
+      const image = document.querySelector('img');
+      const printTree = () => {
+        window.focus();
+        window.print();
+      };
+      if (image.complete) {
+        setTimeout(printTree, 50);
+      } else {
+        image.addEventListener('load', () => setTimeout(printTree, 50), { once: true });
+      }
+    </script>
   </body>
 </html>`);
-  printWindow.document.close();
-  printWindow.addEventListener('load', () => {
-    printWindow.focus();
-    printWindow.print();
-  }, { once: true });
+    printWindow.document.close();
+  } catch (error) {
+    printWindow.close();
+    throw error;
+  }
 }
 
 async function saveVisibleTreePdf(container: HTMLDivElement | null) {
@@ -436,36 +341,26 @@ export function FamilyTree({
   edgeFilters = DEFAULT_EDGE_FILTERS,
   directRelativeFilters = DEFAULT_DIRECT_RELATIVE_FILTERS,
   centralPersonId,
-  viewMode = getDefaultViewMode(),
-  activeGeneration,
   isMobile = false,
   layoutRevision = 0,
-  onGenerationColumnsChange,
-  onPersonGenerationChange,
 }: FamilyTreeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance | null>(null);
   const directFamilyRecenteringRef = useRef(false);
   const directFamilyViewportRef = useRef<Viewport | null>(null);
-  const generationInitialViewportKeyRef = useRef<string | null>(null);
-  const [dragTargetGeneration, setDragTargetGeneration] = useState<number | null>(null);
   const [directFamilyFitZoom, setDirectFamilyFitZoom] = useState<number | null>(null);
   const [directFamilyCurrentZoom, setDirectFamilyCurrentZoom] = useState<number | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const { NODE_WIDTH, NODE_HEIGHT } = TREE_CONSTANTS;
-  const isDirectFamilyView = viewMode === 'familiares-diretos';
-  const isGenerationView = viewMode === 'geracoes';
   const directFamilyFallbackMinZoom = isMobile ? DIRECT_FAMILY_MOBILE_FALLBACK_MIN_ZOOM : DIRECT_FAMILY_FALLBACK_MIN_ZOOM;
   const directFamilyMinZoom = directFamilyFitZoom
     ? Math.max(directFamilyFitZoom * 0.9, Math.min(directFamilyFallbackMinZoom, directFamilyFitZoom))
     : directFamilyFallbackMinZoom;
   const directFamilyFittedZoom = directFamilyFitZoom ?? directFamilyMinZoom;
   const directFamilyViewportZoom = directFamilyCurrentZoom ?? directFamilyMinZoom;
-  const directFamilyCanPan = !isDirectFamilyView || directFamilyViewportZoom > directFamilyFittedZoom + DIRECT_FAMILY_MIN_ZOOM_TOLERANCE;
+  const directFamilyCanPan = directFamilyViewportZoom > directFamilyFittedZoom + DIRECT_FAMILY_MIN_ZOOM_TOLERANCE;
   const directFamilyMaxZoom = isMobile ? DIRECT_FAMILY_MOBILE_MAX_ZOOM : DIRECT_FAMILY_MAX_ZOOM;
-  const effectiveCentralPersonId = isDirectFamilyView
-    ? centralPersonId || selectedPersonId || pessoas[0]?.id
-    : centralPersonId;
+  const effectiveCentralPersonId = centralPersonId || selectedPersonId || pessoas[0]?.id;
 
   const dataHash = useMemo(() => {
     return JSON.stringify({
@@ -473,12 +368,11 @@ export function FamilyTree({
       relacionamentosIds: relacionamentos.map((r) => r.id).sort(),
       selectedPersonId,
       edgeFilters,
-      viewMode,
       directRelativeFilters,
       centralPersonId: effectiveCentralPersonId,
       isMobile,
     });
-  }, [pessoas, relacionamentos, selectedPersonId, edgeFilters, directRelativeFilters, effectiveCentralPersonId, viewMode, isMobile]);
+  }, [pessoas, relacionamentos, selectedPersonId, edgeFilters, directRelativeFilters, effectiveCentralPersonId, isMobile]);
 
   const layoutResult = useMemo(() => {
     const graph = buildTreeGraph({
@@ -494,9 +388,9 @@ export function FamilyTree({
       edgeFilters,
     });
 
-    return getLayoutByViewMode(viewMode, graph, {
+    return directFamilyDistributedLayout(graph, {
       centralPersonId: effectiveCentralPersonId,
-      directRelativeFilters,
+      filters: directRelativeFilters,
     });
   }, [
     dataHash,
@@ -512,13 +406,10 @@ export function FamilyTree({
     edgeFilters,
     directRelativeFilters,
     effectiveCentralPersonId,
-    viewMode,
   ]);
 
   const initialNodes = layoutResult.nodes;
   const initialEdges = layoutResult.edges;
-  const generationColumns = layoutResult.metadata?.generationColumns || [];
-
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
@@ -559,9 +450,8 @@ export function FamilyTree({
   }, []);
 
   const directFamilyBounds = useMemo(() => {
-    if (!isDirectFamilyView) return null;
     return getFlowBounds(nodes, NODE_WIDTH, NODE_HEIGHT);
-  }, [isDirectFamilyView, nodes, NODE_WIDTH, NODE_HEIGHT]);
+  }, [nodes, NODE_WIDTH, NODE_HEIGHT]);
 
   const directFamilyViewport = useMemo(() => {
     if (
@@ -581,64 +471,13 @@ export function FamilyTree({
   }, [directFamilyBounds, containerSize, isMobile]);
 
   const directFamilyTranslateExtent = useMemo<CoordinateExtent | undefined>(() => {
-    if (!isDirectFamilyView || !directFamilyBounds) return undefined;
+    if (!directFamilyBounds) return undefined;
 
     return getDirectFamilyTranslateExtent(
       directFamilyBounds,
       isMobile ? DIRECT_FAMILY_MOBILE_TRANSLATE_PADDING : DIRECT_FAMILY_TRANSLATE_PADDING
     );
-  }, [directFamilyBounds, isDirectFamilyView, isMobile]);
-
-  const generationInitialViewport = useMemo(() => {
-    if (!isGenerationView || isMobile) return null;
-
-    return getGenerationInitialViewport({
-      columns: generationColumns,
-      nodes,
-      containerWidth: containerSize.width,
-      containerHeight: containerSize.height,
-      nodeWidth: NODE_WIDTH,
-      nodeHeight: NODE_HEIGHT,
-    });
-  }, [
-    isGenerationView,
-    isMobile,
-    generationColumns,
-    nodes,
-    containerSize.width,
-    containerSize.height,
-    NODE_WIDTH,
-    NODE_HEIGHT,
-  ]);
-
-  const generationInitialViewportKey = useMemo(
-    () => `${dataHash}:${layoutRevision}:${containerSize.width}x${containerSize.height}`,
-    [dataHash, layoutRevision, containerSize.width, containerSize.height]
-  );
-
-  useEffect(() => {
-    onGenerationColumnsChange?.(generationColumns);
-  }, [generationColumns, onGenerationColumnsChange]);
-
-  useEffect(() => {
-    setNodes((prevNodes) =>
-      prevNodes.map((node) => {
-        if (node.type !== 'generationHeaderNode') {
-          return node;
-        }
-
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            isDragTarget:
-              typeof node.data?.generation === 'number' &&
-              dragTargetGeneration === node.data.generation + 1,
-          },
-        };
-      })
-    );
-  }, [dragTargetGeneration, setNodes]);
+  }, [directFamilyBounds, isMobile]);
 
   useEffect(() => {
     setNodes((prevNodes) =>
@@ -654,7 +493,7 @@ export function FamilyTree({
               onAddConnection: onPersonAddConnection,
               onRemove: onPersonRemove,
               isSelected: node.data.pessoa.id === selectedPersonId,
-              isCentralPerson: viewMode === 'familiares-diretos' && node.data.pessoa.id === effectiveCentralPersonId,
+              isCentralPerson: node.data.pessoa.id === effectiveCentralPersonId,
             },
           };
         }
@@ -680,94 +519,25 @@ export function FamilyTree({
     onPersonAddConnection,
     onPersonRemove,
     onMarriageClick,
-    viewMode,
     effectiveCentralPersonId,
     setNodes,
   ]);
 
   useEffect(() => {
-    const focusPersonId = isDirectFamilyView ? effectiveCentralPersonId : selectedPersonId;
     if (!reactFlowRef.current || nodes.length === 0 || containerSize.width <= 0 || containerSize.height <= 0) return;
+    if (!directFamilyViewport) return;
 
-    if (!focusPersonId && !isDirectFamilyView) {
-      const timer = window.setTimeout(() => {
-        if (isGenerationView && generationInitialViewport) {
-          if (generationInitialViewportKeyRef.current === generationInitialViewportKey) return;
-          generationInitialViewportKeyRef.current = generationInitialViewportKey;
-          reactFlowRef.current?.setViewport(generationInitialViewport, { duration: 320 });
-          return;
-        }
-
-        reactFlowRef.current?.fitView({
-          padding: isGenerationView ? (isMobile ? 0.18 : 0.28) : (isMobile ? 0.12 : 0.2),
-          includeHiddenNodes: false,
-          duration: 320,
-        });
-      }, 50);
-
-      return () => window.clearTimeout(timer);
-    }
-
-    if (!focusPersonId) return;
-
-    if (isDirectFamilyView) {
-      if (!directFamilyViewport) return;
-
+    const timer = window.setTimeout(() => {
       directFamilyViewportRef.current = directFamilyViewport;
       setDirectFamilyFitZoom(directFamilyViewport.zoom);
       setDirectFamilyCurrentZoom(directFamilyViewport.zoom);
-
-      const timer = window.setTimeout(() => {
-        reactFlowRef.current?.setViewport(directFamilyViewport, { duration: 360 });
-      }, 50);
-
-      return () => window.clearTimeout(timer);
-    }
-
-    const selectedNode = nodes.find((node) => node.id === focusPersonId);
-    if (!selectedNode) return;
-
-    const width = selectedNode.type === 'marriageNode'
-      ? MARRIAGE_NODE_SIZE
-      : selectedNode.data?.directRelation === 'central'
-        ? DIRECT_FAMILY_TOKENS.CENTRAL_WIDTH
-        : selectedNode.data?.directRelation
-          ? DIRECT_FAMILY_TOKENS.CARD_WIDTH
-          : NODE_WIDTH;
-    const height = selectedNode.type === 'marriageNode'
-      ? MARRIAGE_NODE_SIZE
-      : selectedNode.data?.directRelation === 'central'
-        ? DIRECT_FAMILY_TOKENS.CENTRAL_HEIGHT
-        : selectedNode.data?.directRelation
-          ? DIRECT_FAMILY_TOKENS.CARD_HEIGHT
-          : NODE_HEIGHT;
-
-    const centerX = selectedNode.position.x + width / 2;
-    const centerY = selectedNode.position.y + height / 2;
-
-    const timer = window.setTimeout(() => {
-      reactFlowRef.current?.setCenter(centerX, centerY, {
-        zoom: isDirectFamilyView
-          ? (isMobile ? DIRECT_FAMILY_TOKENS.MOBILE_ZOOM : DIRECT_FAMILY_TOKENS.DESKTOP_ZOOM)
-          : isGenerationView
-            ? (isMobile ? 0.72 : 0.88)
-            : (isMobile ? 0.8 : 1.05),
-        duration: 800,
-      });
+      reactFlowRef.current?.setViewport(directFamilyViewport, { duration: 360 });
     }, 50);
 
     return () => window.clearTimeout(timer);
   }, [
-    selectedPersonId,
     effectiveCentralPersonId,
     nodes,
-    NODE_WIDTH,
-    NODE_HEIGHT,
-    isMobile,
-    isDirectFamilyView,
-    isGenerationView,
-    generationInitialViewport,
-    generationInitialViewportKey,
     directFamilyViewport,
     containerSize.width,
     containerSize.height,
@@ -776,142 +546,42 @@ export function FamilyTree({
 
   useEffect(() => {
     if (!reactFlowRef.current || containerSize.width <= 0 || containerSize.height <= 0) return;
+    if (!directFamilyViewport) return;
 
-    if (isDirectFamilyView && directFamilyViewport) {
-      directFamilyViewportRef.current = directFamilyViewport;
-      setDirectFamilyFitZoom(directFamilyViewport.zoom);
-      setDirectFamilyCurrentZoom(directFamilyViewport.zoom);
-      reactFlowRef.current.setViewport(directFamilyViewport, { duration: 180 });
-      return;
-    }
-
-    if (!selectedPersonId) {
-      if (isGenerationView && generationInitialViewport) {
-        if (generationInitialViewportKeyRef.current === generationInitialViewportKey) return;
-        generationInitialViewportKeyRef.current = generationInitialViewportKey;
-        reactFlowRef.current.setViewport(generationInitialViewport, { duration: 180 });
-        return;
-      }
-
-      reactFlowRef.current.fitView({
-        padding: isGenerationView ? (isMobile ? 0.18 : 0.28) : (isMobile ? 0.12 : 0.2),
-        includeHiddenNodes: false,
-        duration: 180,
-      });
-    }
+    directFamilyViewportRef.current = directFamilyViewport;
+    setDirectFamilyFitZoom(directFamilyViewport.zoom);
+    setDirectFamilyCurrentZoom(directFamilyViewport.zoom);
+    reactFlowRef.current.setViewport(directFamilyViewport, { duration: 180 });
   }, [
     layoutRevision,
     containerSize.width,
     containerSize.height,
-    isMobile,
-    isDirectFamilyView,
-    isGenerationView,
-    generationInitialViewport,
-    generationInitialViewportKey,
     directFamilyViewport,
-    selectedPersonId,
   ]);
-
-  useEffect(() => {
-    if (
-      !reactFlowRef.current ||
-      viewMode !== 'geracoes' ||
-      !isMobile ||
-      typeof activeGeneration !== 'number' ||
-      generationColumns.length === 0
-    ) {
-      return;
-    }
-
-    const activeColumn = generationColumns.find((column) => column.level === activeGeneration);
-    if (!activeColumn) return;
-
-    const timer = window.setTimeout(() => {
-      reactFlowRef.current?.setCenter(activeColumn.x + NODE_WIDTH / 2, INITIAL_MOBILE_CENTER_Y, {
-        zoom: 0.78,
-        duration: 500,
-      });
-    }, 50);
-
-    return () => window.clearTimeout(timer);
-  }, [activeGeneration, generationColumns, viewMode, isMobile, NODE_WIDTH]);
-
-  const handleNodeDrag = useCallback<NodeDragHandler>(
-    (_event, node) => {
-      if (viewMode === 'lista' || node.type !== 'personNode' || generationColumns.length === 0) {
-        if (dragTargetGeneration !== null) {
-          setDragTargetGeneration(null);
-        }
-        return;
-      }
-
-      const nextGeneration = getGenerationFromNodeX(node.position.x, generationColumns);
-      setDragTargetGeneration((currentGeneration) =>
-        currentGeneration === nextGeneration ? currentGeneration : nextGeneration
-      );
-    },
-    [dragTargetGeneration, generationColumns, viewMode]
-  );
-
-  const handleNodeDragStop = useCallback<NodeDragHandler>(
-    async (_event, node) => {
-      if (
-        viewMode === 'lista' ||
-        node.type !== 'personNode' ||
-        !node.data?.pessoa ||
-        generationColumns.length === 0
-      ) {
-        setDragTargetGeneration(null);
-        return;
-      }
-
-      const nextGeneration = getGenerationFromNodeX(node.position.x, generationColumns);
-      setDragTargetGeneration(null);
-      await onPersonGenerationChange?.(node.data.pessoa.id, nextGeneration);
-    },
-    [generationColumns, onPersonGenerationChange, viewMode]
-  );
 
   const handleInit = useCallback(
     (instance: ReactFlowInstance) => {
       reactFlowRef.current = instance;
 
-      if (isDirectFamilyView && directFamilyViewport) {
+      if (directFamilyViewport) {
         directFamilyViewportRef.current = directFamilyViewport;
         setDirectFamilyFitZoom(directFamilyViewport.zoom);
         setDirectFamilyCurrentZoom(directFamilyViewport.zoom);
         instance.setViewport(directFamilyViewport);
-        return;
-      }
-
-      if (!selectedPersonId && !isDirectFamilyView) {
-        if (isGenerationView && generationInitialViewport) {
-          generationInitialViewportKeyRef.current = generationInitialViewportKey;
-          instance.setViewport(generationInitialViewport);
-          return;
-        }
-
-        instance.fitView({
-          padding: isGenerationView ? (isMobile ? 0.18 : 0.28) : (isMobile ? 0.12 : 0.2),
-          includeHiddenNodes: false,
-        });
       }
     },
-    [selectedPersonId, isMobile, isDirectFamilyView, isGenerationView, directFamilyViewport, generationInitialViewport, generationInitialViewportKey]
+    [directFamilyViewport]
   );
 
   const handleMove = useCallback(
     (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
-      if (!isDirectFamilyView) return;
       setDirectFamilyCurrentZoom(viewport.zoom);
     },
-    [isDirectFamilyView]
+    []
   );
 
   const handleMoveEnd = useCallback(
     (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
-      if (!isDirectFamilyView) return;
-
       setDirectFamilyCurrentZoom(viewport.zoom);
 
       if (
@@ -932,7 +602,7 @@ export function FamilyTree({
         directFamilyRecenteringRef.current = false;
       }, 260);
     },
-    [isDirectFamilyView]
+    []
   );
 
   const handleNodeClick = useCallback(
@@ -956,7 +626,7 @@ export function FamilyTree({
       await printVisibleTree(containerRef.current);
     } catch (error) {
       console.error('Erro ao imprimir árvore:', error);
-      toast.error('Não foi possível imprimir a árvore. As cores foram ajustadas para exportação; tente novamente.');
+      toast.error(error instanceof Error ? error.message : 'Não foi possível imprimir a árvore.');
     }
   }, []);
 
@@ -973,11 +643,11 @@ export function FamilyTree({
     <div
       ref={containerRef}
       data-export-root="family-tree"
-      data-export-view={viewMode}
+      data-export-view="familiares-diretos"
       className={[
         'family-tree-export-root',
         'relative h-full w-full overflow-hidden',
-        isDirectFamilyView ? 'bg-slate-50' : '',
+        'bg-slate-50',
       ].join(' ')}
       style={{ width: '100%', height: '100%', minHeight: '500px' }}
     >
@@ -988,37 +658,28 @@ export function FamilyTree({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
-        onNodeDrag={handleNodeDrag}
-        onNodeDragStop={handleNodeDragStop}
         onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        minZoom={isDirectFamilyView ? directFamilyMinZoom : isMobile ? 0.5 : 0.1}
-        maxZoom={isDirectFamilyView ? directFamilyMaxZoom : isMobile ? 1.3 : 2}
-        nodesDraggable={!isDirectFamilyView}
-        nodesConnectable={!isDirectFamilyView}
-        elementsSelectable={!isDirectFamilyView}
+        minZoom={directFamilyMinZoom}
+        maxZoom={directFamilyMaxZoom}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
         panOnDrag={directFamilyCanPan}
-        panOnScroll={isDirectFamilyView ? directFamilyCanPan : undefined}
-        zoomOnScroll={isDirectFamilyView ? true : undefined}
-        zoomOnPinch={isDirectFamilyView ? true : undefined}
+        panOnScroll={directFamilyCanPan}
+        zoomOnScroll
+        zoomOnPinch
         translateExtent={directFamilyTranslateExtent}
-        preventScrolling={isDirectFamilyView ? true : undefined}
+        preventScrolling
         defaultViewport={{
-          x: isDirectFamilyView && directFamilyViewport
-            ? directFamilyViewport.x
-            : generationInitialViewport?.x ?? 0,
-          y: isDirectFamilyView && directFamilyViewport
-            ? directFamilyViewport.y
-            : generationInitialViewport?.y ?? 0,
-          zoom: isDirectFamilyView
-            ? directFamilyFittedZoom
-            : generationInitialViewport?.zoom ?? (isMobile ? 0.72 : 0.8),
+          x: directFamilyViewport?.x ?? 0,
+          y: directFamilyViewport?.y ?? 0,
+          zoom: directFamilyFittedZoom,
         }}
         proOptions={{ hideAttribution: true }}
       >
-        {!isDirectFamilyView && <Background />}
         <Controls showZoom={false} showFitView={false} showInteractive={false}>
           <ControlButton onClick={handleZoomIn} title="Aumentar Zoom" aria-label="Aumentar Zoom">
             <Plus className="h-4 w-4" />
@@ -1033,19 +694,6 @@ export function FamilyTree({
             <FileDown className="h-4 w-4" />
           </ControlButton>
         </Controls>
-        {!isMobile && !isDirectFamilyView && (
-          <MiniMap
-            nodeColor={(node) => {
-              const pessoa = node.data?.pessoa;
-              if (pessoa?.id && pessoa.id === selectedPersonId) return '#1d4ed8';
-              if (pessoa?.humano_ou_pet === 'Pet') return FAMILY_TREE_COLORS.CARD_BORDER_PET;
-              if (hasDeathDate(pessoa?.data_falecimento)) return FAMILY_TREE_COLORS.CARD_BORDER_DECEASED;
-              if (node.type === 'marriageNode') return FAMILY_TREE_COLORS.EDGE_SPOUSE;
-              return FAMILY_TREE_COLORS.CARD_BORDER_ALIVE;
-            }}
-            maskColor="rgb(240, 240, 240, 0.6)"
-          />
-        )}
       </ReactFlow>
     </div>
   );

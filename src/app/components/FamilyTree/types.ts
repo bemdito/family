@@ -1,5 +1,5 @@
 import { Edge, Node } from 'reactflow';
-import { Pessoa, Relacionamento, TipoVisualizacaoArvore } from '../../types';
+import { Pessoa, Relacionamento } from '../../types';
 
 export interface EdgeFilters {
   conjugal: boolean;
@@ -22,14 +22,6 @@ export type DirectRelativeGroup =
   | 'primos';
 
 export type DirectRelativeFilters = Record<DirectRelativeGroup, boolean>;
-
-export interface GenerationColumnMeta {
-  level: number;
-  label: string;
-  x: number;
-  period?: string;
-  description?: string;
-}
 
 export interface MarriageNodeDetails {
   id?: string;
@@ -89,9 +81,6 @@ export interface TreeGraphBuildResult extends TreeLayoutParams {
 export interface TreeLayoutResult {
   nodes: Node[];
   edges: Edge[];
-  metadata?: {
-    generationColumns?: GenerationColumnMeta[];
-  };
 }
 
 export interface LayoutConstants {
@@ -100,8 +89,6 @@ export interface LayoutConstants {
   MARRIAGE_NODE_WIDTH: number;
   HORIZONTAL_GAP_BETWEEN_SPOUSES: number;
   HORIZONTAL_GAP_TO_CHILDREN: number;
-  HORIZONTAL_GAP_BETWEEN_GENERATIONS: number;
-  VERTICAL_GAP_IN_GENERATION_LAYOUT: number;
   INITIAL_X: number;
   INITIAL_Y: number;
 }
@@ -167,8 +154,6 @@ export const TREE_CONSTANTS: LayoutConstants = {
   MARRIAGE_NODE_WIDTH: 32,
   HORIZONTAL_GAP_BETWEEN_SPOUSES: 56,
   HORIZONTAL_GAP_TO_CHILDREN: 100,
-  HORIZONTAL_GAP_BETWEEN_GENERATIONS: 760,
-  VERTICAL_GAP_IN_GENERATION_LAYOUT: 64,
   INITIAL_X: 100,
   INITIAL_Y: 100,
 };
@@ -313,8 +298,4 @@ export function getStablePersonComparator(
 
     return (pessoaA?.nome_completo || '').localeCompare(pessoaB?.nome_completo || '');
   };
-}
-
-export function getDefaultViewMode(): TipoVisualizacaoArvore {
-  return 'geracoes';
 }

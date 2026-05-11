@@ -1,7 +1,7 @@
 // Configurações globais do sistema
 
 export const APP_CONFIG = {
-  name: 'Família Souza Barros - Genealogia',
+  name: 'Família Souza Barros - Minha Árvore',
   familyName: 'Família Souza Barros',
   version: '1.0.0',
   

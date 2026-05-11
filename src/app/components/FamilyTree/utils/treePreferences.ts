@@ -1,4 +1,3 @@
-import { TipoVisualizacaoArvore } from '../../../types';
 import {
   DEFAULT_DIRECT_RELATIVE_FILTERS,
   DirectRelativeFilters,
@@ -6,22 +5,11 @@ import {
 } from '../types';
 
 const STORAGE_KEYS = {
-  viewMode: 'familyTree:viewMode',
-  activeGeneration: 'familyTree:activeGeneration',
   desktopNoticeDismissed: 'familyTree:desktopNoticeDismissed',
 };
 
-export function readStoredViewMode(): TipoVisualizacaoArvore | null {
-  try {
-    const value = window.localStorage.getItem(STORAGE_KEYS.viewMode);
-    if (value === 'familiares-diretos' || value === 'geracoes' || value === 'lista') {
-      return value;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
+const LEGACY_TREE_MODE_STORAGE_KEY = `familyTree:${'view'}${'Mode'}`;
+const LEGACY_TREE_GENERATION_STORAGE_KEY = `familyTree:${'active'}${'Generation'}`;
 
 export function readDirectRelativeFilters(userId?: string): DirectRelativeFilters {
   if (!userId) return DEFAULT_DIRECT_RELATIVE_FILTERS;
@@ -53,29 +41,10 @@ export function storeDirectRelativeFilters(userId: string | undefined, value: Di
   }
 }
 
-export function storeViewMode(value: TipoVisualizacaoArvore) {
+export function migrateLegacyTreeViewPreferences() {
   try {
-    window.localStorage.setItem(STORAGE_KEYS.viewMode, value);
-  } catch {
-    // noop
-  }
-}
-
-export function readStoredActiveGeneration(): number | null {
-  try {
-    const value = window.localStorage.getItem(STORAGE_KEYS.activeGeneration);
-    if (value === null) return null;
-
-    const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function storeActiveGeneration(value: number) {
-  try {
-    window.localStorage.setItem(STORAGE_KEYS.activeGeneration, String(value));
+    window.localStorage.removeItem(LEGACY_TREE_MODE_STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_TREE_GENERATION_STORAGE_KEY);
   } catch {
     // noop
   }

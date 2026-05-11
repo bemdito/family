@@ -2,7 +2,6 @@ import React from 'react';
 import { Handle, NodeProps, NodeTypes, Position } from 'reactflow';
 import { PersonNode } from './PersonNode';
 import { MarriageNode } from './MarriageNode';
-import { GenerationHeaderNode } from './GenerationHeaderNode';
 import { DirectFamilyLabelNode } from './DirectFamilyLabelNode';
 import { FAMILY_TREE_COLORS } from './visualTokens';
 import {
@@ -115,7 +114,6 @@ function DirectFamilyLegendNode({ data }: NodeProps<DirectFamilyLegendNodeData>)
 export const nodeTypes: NodeTypes = {
   personNode: PersonNode,
   marriageNode: MarriageNode,
-  generationHeaderNode: GenerationHeaderNode,
   directFamilyLabelNode: DirectFamilyLabelNode,
   directFamilyAnchorNode: DirectFamilyAnchorNode,
   directFamilyGroupBoxNode: DirectFamilyGroupBoxNode,

@@ -21,8 +21,6 @@ export type LadoParentesco =
   | 'ambos'
   | 'indefinido';
 
-export type TipoVisualizacaoArvore = 'familiares-diretos' | 'lados' | 'geracoes' | 'lista';
-
 export type GeracaoSociologica =
   | 'Geração Silenciosa'
   | 'Baby Boomer'
