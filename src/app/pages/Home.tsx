@@ -44,11 +44,15 @@ import {
 } from '../services/dataService';
 import { Pessoa, Relacionamento } from '../types';
 import {
+  DEFAULT_GENEALOGY_FILTERS,
   DEFAULT_DIRECT_RELATIVE_FILTERS,
   DirectRelativeFilters,
   DirectRelativeGroup,
+  GenealogyFilterKey,
+  GenealogyFilters,
   MarriageNodeDetails,
 } from '../components/FamilyTree/types';
+import { TreeViewMode } from '../components/FamilyTree/ViewModeToggle';
 import { FAMILY_TREE_COLORS, hasDeathDate } from '../components/FamilyTree/visualTokens';
 import {
   DIRECT_FAMILY_CARD_TEXT_COLORS,
@@ -115,6 +119,7 @@ const CURIOSITY_TOPIC_OPTIONS = [
 
 type CuriosityTopic = typeof CURIOSITY_TOPIC_OPTIONS[number];
 type CuriosidadesTab = 'voce-sabia' | 'descubra' | 'pergunte-ia' | 'conexao';
+type SidebarPanel = 'filters' | 'legend' | 'info';
 
 export function Home() {
   const navigate = useNavigate();
@@ -133,6 +138,8 @@ export function Home() {
   const [pessoasFiltradas, setPessoasFiltradas] = useState<Pessoa[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [treeLayoutRevision, setTreeLayoutRevision] = useState(0);
+  const [treeViewMode, setTreeViewMode] = useState<TreeViewMode>('minha-arvore');
+  const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanel>('filters');
   const [legendOpen, setLegendOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(() => !homeTreeDataCache);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -184,6 +191,8 @@ export function Home() {
     falecidos: true,
     pets: true,
   });
+
+  const [genealogyFilters, setGenealogyFilters] = useState<GenealogyFilters>(DEFAULT_GENEALOGY_FILTERS);
 
   useEffect(() => {
     setSidebarOpen((prev) => (isMobile ? false : prev));
@@ -509,6 +518,13 @@ export function Home() {
     }));
   }, [user?.id]);
 
+  const toggleGenealogyFilter = useCallback((filterKey: GenealogyFilterKey) => {
+    setGenealogyFilters((prev) => ({
+      ...prev,
+      [filterKey]: !prev[filterKey],
+    }));
+  }, []);
+
   const centralReferencePersonId = treeFocusPersonId || linkedPersonId || selectedPersonId || pessoas[0]?.id;
   const centralReferencePerson = useMemo(
     () => pessoas.find((pessoa) => pessoa.id === centralReferencePersonId),
@@ -650,6 +666,37 @@ export function Home() {
   const directRelationCounts = useMemo(
     () => calculateDirectRelationCounts(pessoas, relacionamentos, centralReferencePersonId),
     [pessoas, relacionamentos, centralReferencePersonId]
+  );
+  const sidebarPanelContent = (
+    <>
+      {activeSidebarPanel === 'filters' && (
+        <div className="space-y-4">
+          {treeViewMode === 'genealogia' ? (
+            <GenealogyFilterGrid
+              filters={genealogyFilters}
+              onToggle={toggleGenealogyFilter}
+            />
+          ) : (
+            <DirectRelationKpiGrid
+              filters={directRelativeFilters}
+              counts={directRelationCounts}
+              onToggle={toggleDirectRelativeFilter}
+            />
+          )}
+
+          <LifeStatusKpiGrid
+            vivos={stats.pessoasVivas}
+            falecidos={stats.pessoasFalecidas}
+            filters={personFilters}
+            onToggle={togglePersonFilter}
+          />
+        </div>
+      )}
+
+      {activeSidebarPanel === 'legend' && <FamilyTreeLegend compact={isMobile} />}
+
+      {activeSidebarPanel === 'info' && <SidebarInfoPanel />}
+    </>
   );
   const selectedCuriosityPerson = useMemo(
     () => pessoas.find((pessoa) => pessoa.id === selectedCuriosityPersonId),
@@ -877,7 +924,7 @@ export function Home() {
                 size="icon"
                 className="h-9 w-9 shrink-0"
                 onClick={() => setLegendOpen((prev) => !prev)}
-                title={legendOpen ? 'Ocultar legenda' : 'Exibir legenda'}
+                title={legendOpen ? 'Ocultar painel' : 'Exibir painel'}
               >
                 {legendOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
               </Button>
@@ -935,7 +982,11 @@ export function Home() {
 
       {isMobile && legendOpen && (
         <section className="border-b border-gray-200 bg-white px-4 py-3">
-          <FamilyTreeLegend compact />
+          <SidebarPanelTabs
+            activePanel={activeSidebarPanel}
+            onChange={setActiveSidebarPanel}
+          />
+          <div className="mt-3">{sidebarPanelContent}</div>
         </section>
       )}
 
@@ -948,21 +999,14 @@ export function Home() {
             ].join(' ')}
           >
             {sidebarOpen && (
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-                <DirectRelationKpiGrid
-                  filters={directRelativeFilters}
-                  counts={directRelationCounts}
-                  onToggle={toggleDirectRelativeFilter}
+              <div className="flex min-h-0 flex-1 flex-col gap-4">
+                <SidebarPanelTabs
+                  activePanel={activeSidebarPanel}
+                  onChange={setActiveSidebarPanel}
                 />
-
-                <LifeStatusKpiGrid
-                  vivos={stats.pessoasVivas}
-                  falecidos={stats.pessoasFalecidas}
-                  filters={personFilters}
-                  onToggle={togglePersonFilter}
-                />
-
-                <FamilyTreeLegend />
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                  {sidebarPanelContent}
+                </div>
               </div>
             )}
           </aside>
@@ -1015,6 +1059,9 @@ export function Home() {
               centralPersonId={centralReferencePersonId}
               isMobile={isMobile}
               layoutRevision={treeLayoutRevision}
+              viewMode={treeViewMode}
+              onViewModeChange={setTreeViewMode}
+              genealogyFilters={genealogyFilters}
             />
           )}
         </section>
@@ -1670,6 +1717,56 @@ function UserMenu({
   );
 }
 
+const SIDEBAR_PANEL_OPTIONS: Array<{ key: SidebarPanel; label: string }> = [
+  { key: 'filters', label: 'Filtros' },
+  { key: 'legend', label: 'Legendas' },
+  { key: 'info', label: 'Informações' },
+];
+
+function SidebarPanelTabs({
+  activePanel,
+  onChange,
+}: {
+  activePanel: SidebarPanel;
+  onChange: (panel: SidebarPanel) => void;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1">
+      {SIDEBAR_PANEL_OPTIONS.map((option) => {
+        const active = activePanel === option.key;
+
+        return (
+          <button
+            key={option.key}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(option.key)}
+            className={[
+              'min-h-8 rounded-md px-2 text-xs font-semibold transition-colors',
+              active
+                ? 'bg-white text-gray-950 shadow-sm'
+                : 'text-gray-500 hover:bg-white/70 hover:text-gray-800',
+            ].join(' ')}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SidebarInfoPanel() {
+  return (
+    <section className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+      <h2 className="text-sm font-semibold text-gray-900">Informações da árvore</h2>
+      <p className="mt-2 text-xs leading-relaxed text-gray-500">
+        Esta seção reunirá detalhes complementares sobre a visualização selecionada.
+      </p>
+    </section>
+  );
+}
+
 function FilterPanel({
   personFilters,
   edgeFilters,
@@ -1992,6 +2089,70 @@ function DirectRelationKpiGrid({
         onToggle={onToggle}
         excludedKeys={['pais']}
       />
+    </section>
+  );
+}
+
+const GENEALOGY_FILTER_OPTIONS: Array<{
+  key: GenealogyFilterKey;
+  label: string;
+  colorKey: keyof typeof DIRECT_FAMILY_RELATION_COLORS;
+}> = [
+  { key: 'generation1', label: 'Geração 1', colorKey: 'tataravos' },
+  { key: 'generation2', label: 'Geração 2', colorKey: 'bisavos' },
+  { key: 'generation3Family', label: 'Geração 3 - Familiares', colorKey: 'avos' },
+  { key: 'generation3Spouses', label: 'Geração 3 - Cônjuges', colorKey: 'tios' },
+  { key: 'generation4Family', label: 'Geração 4 - Familiares', colorKey: 'primos' },
+  { key: 'generation4Spouses', label: 'Geração 4 - Cônjuges', colorKey: 'conjuge' },
+  { key: 'generation5Family', label: 'Geração 5 - Familiares', colorKey: 'irmaos' },
+  { key: 'generation5Spouses', label: 'Geração 5 - Cônjuges', colorKey: 'sobrinhos' },
+  { key: 'generation6', label: 'Geração 6', colorKey: 'filhos' },
+];
+
+function GenealogyFilterGrid({
+  filters,
+  onToggle,
+}: {
+  filters: GenealogyFilters;
+  onToggle: (key: GenealogyFilterKey) => void;
+}) {
+  return (
+    <section>
+      <h2 className="mb-1 text-sm font-semibold text-gray-900">Filtros</h2>
+      <p className="mb-2 text-xs leading-snug text-gray-500">
+        Clique nos cards abaixo para exibir ou ocultar gerações na genealogia.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {GENEALOGY_FILTER_OPTIONS.map((option) => {
+          const active = filters[option.key];
+          const color = DIRECT_FAMILY_RELATION_COLORS[option.colorKey];
+
+          return (
+            <button
+              key={option.key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onToggle(option.key)}
+              className={[
+                'min-h-[54px] rounded-lg border p-2 text-left shadow-sm transition',
+                active ? 'opacity-100' : 'grayscale opacity-45',
+                'hover:-translate-y-0.5 hover:shadow-md',
+              ].join(' ')}
+              style={{
+                background: color.background,
+                borderColor: color.solid,
+                color: DIRECT_FAMILY_CARD_TEXT_COLORS.primary,
+              }}
+              title={active ? `Ocultar ${option.label}` : `Mostrar ${option.label}`}
+            >
+              <span className="block text-xs font-semibold leading-snug">{option.label}</span>
+              <span className="mt-1 block text-[11px] font-medium leading-none">
+                {active ? 'Ativo' : 'Oculto'}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </section>
   );
 }
