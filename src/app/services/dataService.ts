@@ -42,6 +42,8 @@ const RELACIONAMENTO_COLUMNS = [
   'pessoa_destino_id',
   'tipo_relacionamento',
   'subtipo_relacionamento',
+  'data_casamento',
+  'local_casamento',
 ] as const;
 
 type RelacionamentoPayload = Omit<Relacionamento, 'id'>;
@@ -427,7 +429,7 @@ export async function adicionarRelacionamento(relacionamento: Omit<Relacionament
 }
 
 export function getRelacionamentoInversoPayload(
-  relacionamento: Pick<Relacionamento, 'pessoa_origem_id' | 'pessoa_destino_id' | 'tipo_relacionamento' | 'subtipo_relacionamento'>,
+  relacionamento: Pick<Relacionamento, 'pessoa_origem_id' | 'pessoa_destino_id' | 'tipo_relacionamento' | 'subtipo_relacionamento' | 'data_casamento' | 'local_casamento'>,
   options: InverseOptions = {}
 ): RelacionamentoPayload | undefined {
   let tipoInverso: Relacionamento['tipo_relacionamento'] | undefined;
@@ -451,6 +453,8 @@ export function getRelacionamentoInversoPayload(
     pessoa_destino_id: relacionamento.pessoa_origem_id,
     tipo_relacionamento: tipoInverso,
     subtipo_relacionamento: relacionamento.subtipo_relacionamento,
+    data_casamento: relacionamento.data_casamento,
+    local_casamento: relacionamento.local_casamento,
     ativo: true,
   };
 }

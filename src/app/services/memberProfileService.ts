@@ -94,10 +94,20 @@ export async function ensureMemberProfile(userId: string, payload?: { nome_exibi
   }
 
   if (existing) {
-    if (payload?.nome_exibicao && !existing.nome_exibicao) {
+    const updates: { nome_exibicao?: string | null; avatar_url?: string | null } = {};
+
+    if (payload && 'nome_exibicao' in payload && payload.nome_exibicao !== existing.nome_exibicao) {
+      updates.nome_exibicao = payload.nome_exibicao ?? null;
+    }
+
+    if (payload && 'avatar_url' in payload && payload.avatar_url !== existing.avatar_url) {
+      updates.avatar_url = payload.avatar_url ?? null;
+    }
+
+    if (Object.keys(updates).length > 0) {
       const { data, error } = await supabase
         .from('profiles')
-        .update({ nome_exibicao: payload.nome_exibicao })
+        .update(updates)
         .eq('id', userId)
         .select('*')
         .single();

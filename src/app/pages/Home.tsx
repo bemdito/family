@@ -980,21 +980,21 @@ export function Home() {
           </div>
 
           <div className="flex min-w-0 items-center justify-end gap-2">
-            <div className="relative flex min-w-0 flex-row-reverse items-center">
+            <div className="pointer-events-none relative flex min-w-0 flex-row-reverse items-center">
               <Button
                 variant="outline"
                 size="icon"
-                className="h-9 w-9 shrink-0 bg-white"
+                className="pointer-events-auto relative z-20 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-white"
                 title="Buscar por nome ou local"
                 aria-label={searchExpanded ? 'Busca expandida' : 'Abrir busca'}
                 onClick={() => setSearchExpanded(true)}
               >
-                <Search className="h-4 w-4" />
+                <Search className="pointer-events-none h-4 w-4" />
               </Button>
 
               <div
                 className={[
-                  'relative overflow-visible transition-all duration-300 ease-out',
+                  'pointer-events-auto relative z-10 overflow-visible transition-all duration-300 ease-out',
                   searchExpanded ? 'w-[min(68vw,320px)] opacity-100' : 'w-0 opacity-0',
                 ].join(' ')}
               >
@@ -1012,7 +1012,7 @@ export function Home() {
                         }
                       }, 120);
                     }}
-                    className="h-9"
+                    className="h-10"
                     tabIndex={searchExpanded ? 0 : -1}
                   />
 
