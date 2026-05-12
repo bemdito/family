@@ -1,10 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { CheckCircle2, Heart, Save, Users } from 'lucide-react';
+import { Heart, Plus, Save, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
 import {
   listarArquivosHistoricosPorPessoa,
@@ -27,6 +37,21 @@ type RelationshipGroups = {
   irmaos: Pessoa[];
 };
 
+type RelationshipGroupKey = 'pais' | 'filhos' | 'conjuges' | 'irmaos';
+
+type AddRelativeForm = {
+  nome_completo: string;
+  data_nascimento: string;
+  local_nascimento: string;
+};
+
+type AddDialogState = {
+  group: RelationshipGroupKey;
+  title: string;
+} | null;
+
+type MarriageDetails = Record<string, { data_casamento: string; local_casamento: string }>;
+
 const EMPTY_GROUPS: RelationshipGroups = {
   pais: [],
   maes: [],
@@ -39,25 +64,40 @@ function uniquePeople(people: Pessoa[]) {
   return Array.from(new Map(people.map((person) => [person.id, person])).values());
 }
 
+function createLocalPerson(form: AddRelativeForm): Pessoa {
+  return {
+    id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    nome_completo: form.nome_completo.trim(),
+    data_nascimento: form.data_nascimento.trim() || undefined,
+    local_nascimento: form.local_nascimento.trim() || undefined,
+    humano_ou_pet: 'Humano',
+  };
+}
+
 function RelationSection({
   title,
   emptyLabel,
   people,
-  typeLabel,
+  addLabel,
+  onAdd,
+  onRemove,
+  children,
 }: {
   title: string;
   emptyLabel: string;
   people: Pessoa[];
-  typeLabel: string;
+  addLabel: string;
+  onAdd: () => void;
+  onRemove: (personId: string) => void;
+  children?: (person: Pessoa) => React.ReactNode;
 }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="font-semibold text-gray-900">{title}</h3>
-        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          já cadastrado
-        </span>
+        <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={onAdd} aria-label={addLabel}>
+          <Plus className="h-4 w-4" />
+        </Button>
       </div>
 
       {people.length === 0 ? (
@@ -66,8 +106,20 @@ function RelationSection({
         <div className="space-y-2">
           {people.map((person) => (
             <div key={person.id} className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
-              <p className="text-sm font-medium text-gray-900">{person.nome_completo}</p>
-              <p className="text-xs text-gray-500">{typeLabel}</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="min-w-0 text-sm font-medium text-gray-900">{person.nome_completo}</p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-red-700 hover:bg-red-50"
+                  onClick={() => onRemove(person.id)}
+                  aria-label={`Remover ${person.nome_completo}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              {children?.(person)}
             </div>
           ))}
         </div>
@@ -81,6 +133,14 @@ export function MeusVinculos() {
   const { user } = useAuth();
   const [link, setLink] = useState<(UserPersonLinkRecord & { pessoa: Pessoa | null }) | null>(null);
   const [relationships, setRelationships] = useState<RelationshipGroups>(EMPTY_GROUPS);
+  const [marriageDetails, setMarriageDetails] = useState<MarriageDetails>({});
+  const [addDialog, setAddDialog] = useState<AddDialogState>(null);
+  const [addForm, setAddForm] = useState<AddRelativeForm>({
+    nome_completo: '',
+    data_nascimento: '',
+    local_nascimento: '',
+  });
+  const [hasLocalRelationshipChanges, setHasLocalRelationshipChanges] = useState(false);
   const [archives, setArchives] = useState<ArquivoHistorico[]>([]);
   const [loading, setLoading] = useState(true);
   const [finishing, setFinishing] = useState(false);
@@ -90,6 +150,13 @@ export function MeusVinculos() {
   async function reloadRelationships(pessoaId: string) {
     const nextRelationships = await obterRelacionamentosDaPessoa(pessoaId);
     setRelationships(nextRelationships);
+    setMarriageDetails((current) => {
+      const next = { ...current };
+      uniquePeople(nextRelationships.conjuges).forEach((person) => {
+        next[person.id] = next[person.id] ?? { data_casamento: '', local_casamento: '' };
+      });
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -128,6 +195,85 @@ export function MeusVinculos() {
     };
   }, [user]);
 
+  const openAddDialog = (group: RelationshipGroupKey, title: string) => {
+    setAddDialog({ group, title });
+    setAddForm({ nome_completo: '', data_nascimento: '', local_nascimento: '' });
+  };
+
+  const closeAddDialog = () => {
+    setAddDialog(null);
+    setAddForm({ nome_completo: '', data_nascimento: '', local_nascimento: '' });
+  };
+
+  const addRelative = () => {
+    if (!addDialog) return;
+    if (!addForm.nome_completo.trim()) {
+      toast.error('Informe o nome completo do familiar.');
+      return;
+    }
+
+    const person = createLocalPerson(addForm);
+
+    // TODO: persistir a nova pessoa e o vínculo em Supabase quando o fluxo de revisão tiver backend definitivo.
+    setRelationships((current) => ({
+      ...current,
+      [addDialog.group]: uniquePeople([...current[addDialog.group], person]),
+    }));
+
+    if (addDialog.group === 'conjuges') {
+      setMarriageDetails((current) => ({
+        ...current,
+        [person.id]: { data_casamento: '', local_casamento: '' },
+      }));
+    }
+
+    setHasLocalRelationshipChanges(true);
+    closeAddDialog();
+  };
+
+  const removeRelative = (group: RelationshipGroupKey, personId: string) => {
+    // TODO: persistir remoção de vínculo em Supabase quando a revisão de relacionamentos for definitiva.
+    if (group === 'pais') {
+      setRelationships((current) => ({
+        ...current,
+        pais: current.pais.filter((person) => person.id !== personId),
+        maes: current.maes.filter((person) => person.id !== personId),
+      }));
+    } else {
+      setRelationships((current) => ({
+        ...current,
+        [group]: current[group].filter((person) => person.id !== personId),
+      }));
+    }
+
+    if (group === 'conjuges') {
+      setMarriageDetails((current) => {
+        const next = { ...current };
+        delete next[personId];
+        return next;
+      });
+    }
+
+    setHasLocalRelationshipChanges(true);
+  };
+
+  const updateMarriageDetail = (
+    spouseId: string,
+    field: 'data_casamento' | 'local_casamento',
+    value: string,
+  ) => {
+    // TODO: persistir data_casamento/local_casamento no relacionamento de cônjuge quando houver escrita nessa revisão.
+    setMarriageDetails((current) => ({
+      ...current,
+      [spouseId]: {
+        data_casamento: current[spouseId]?.data_casamento ?? '',
+        local_casamento: current[spouseId]?.local_casamento ?? '',
+        [field]: value,
+      },
+    }));
+    setHasLocalRelationshipChanges(true);
+  };
+
   const handleFinish = async () => {
     if (!link?.id || !pessoa?.id) {
       toast.error('Não foi possível localizar seu vínculo com a árvore.');
@@ -152,7 +298,11 @@ export function MeusVinculos() {
       return;
     }
 
-    toast.success('Vínculos confirmados.');
+    if (hasLocalRelationshipChanges) {
+      toast.info('Correções registradas para revisão. A persistência definitiva será implementada em seguida.');
+    } else {
+      toast.success('Vínculos confirmados.');
+    }
     navigate('/', { replace: true });
   };
 
@@ -203,10 +353,61 @@ export function MeusVinculos() {
               </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <RelationSection title="Pais" emptyLabel="Nenhum pai/mãe cadastrado" people={parents} typeLabel="Pai/Mãe" />
-              <RelationSection title="Filhos" emptyLabel="Nenhum filho cadastrado" people={uniquePeople(relationships.filhos)} typeLabel="Filho(a)" />
-              <RelationSection title="Cônjuge" emptyLabel="Nenhum cônjuge cadastrado" people={uniquePeople(relationships.conjuges)} typeLabel="Cônjuge" />
-              <RelationSection title="Irmãos" emptyLabel="Nenhum irmão cadastrado" people={uniquePeople(relationships.irmaos)} typeLabel="Irmão(ã)" />
+              <RelationSection
+                title="Pais"
+                emptyLabel="Nenhum pai/mãe cadastrado"
+                people={parents}
+                addLabel="Adicionar pai ou mãe"
+                onAdd={() => openAddDialog('pais', 'Adicionar pai ou mãe')}
+                onRemove={(personId) => removeRelative('pais', personId)}
+              />
+              <RelationSection
+                title="Filhos"
+                emptyLabel="Nenhum filho cadastrado"
+                people={uniquePeople(relationships.filhos)}
+                addLabel="Adicionar filho"
+                onAdd={() => openAddDialog('filhos', 'Adicionar filho')}
+                onRemove={(personId) => removeRelative('filhos', personId)}
+              />
+              <RelationSection
+                title="Cônjuge"
+                emptyLabel="Nenhum cônjuge cadastrado"
+                people={uniquePeople(relationships.conjuges)}
+                addLabel="Adicionar cônjuge"
+                onAdd={() => openAddDialog('conjuges', 'Adicionar cônjuge')}
+                onRemove={(personId) => removeRelative('conjuges', personId)}
+              >
+                {(person) => (
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-gray-600">Data de casamento</Label>
+                      <Input
+                        value={marriageDetails[person.id]?.data_casamento ?? ''}
+                        onChange={(event) => updateMarriageDetail(person.id, 'data_casamento', event.target.value)}
+                        placeholder="DD/MM/AAAA ou AAAA"
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-gray-600">Local de casamento</Label>
+                      <Input
+                        value={marriageDetails[person.id]?.local_casamento ?? ''}
+                        onChange={(event) => updateMarriageDetail(person.id, 'local_casamento', event.target.value)}
+                        placeholder="Cidade/UF"
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
+              </RelationSection>
+              <RelationSection
+                title="Irmãos"
+                emptyLabel="Nenhum irmão cadastrado"
+                people={uniquePeople(relationships.irmaos)}
+                addLabel="Adicionar irmão"
+                onAdd={() => openAddDialog('irmaos', 'Adicionar irmão')}
+                onRemove={(personId) => removeRelative('irmaos', personId)}
+              />
             </CardContent>
           </Card>
 
@@ -242,6 +443,57 @@ export function MeusVinculos() {
           </Button>
         </aside>
       </main>
+
+      <Dialog open={Boolean(addDialog)} onOpenChange={(open) => (!open ? closeAddDialog() : undefined)}>
+        <DialogContent className="bg-white">
+          <DialogHeader>
+            <DialogTitle>{addDialog?.title ?? 'Adicionar familiar'}</DialogTitle>
+            <DialogDescription>
+              Esta correção ficará registrada localmente nesta revisão até a persistência definitiva ser implementada.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="relative-name">Nome completo</Label>
+              <Input
+                id="relative-name"
+                value={addForm.nome_completo}
+                onChange={(event) => setAddForm((current) => ({ ...current, nome_completo: event.target.value }))}
+                placeholder="Nome completo"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="relative-birth-date">Data de nascimento opcional</Label>
+              <Input
+                id="relative-birth-date"
+                value={addForm.data_nascimento}
+                onChange={(event) => setAddForm((current) => ({ ...current, data_nascimento: event.target.value }))}
+                placeholder="DD/MM/AAAA ou AAAA"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="relative-birth-place">Local de nascimento opcional</Label>
+              <Input
+                id="relative-birth-place"
+                value={addForm.local_nascimento}
+                onChange={(event) => setAddForm((current) => ({ ...current, local_nascimento: event.target.value }))}
+                placeholder="Cidade/UF"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeAddDialog}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={addRelative}>
+              <Plus className="mr-2 h-4 w-4" />
+              Adicionar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

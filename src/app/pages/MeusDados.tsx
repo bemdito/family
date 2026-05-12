@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
 import { useNavigate } from 'react-router';
-import { Camera, ImagePlus, Plus, Save, Trash2, UploadCloud, UserCircle2 } from 'lucide-react';
+import { Camera, ImagePlus, Info, Plus, Save, Trash2, UploadCloud, UserCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import {
@@ -32,14 +32,18 @@ import {
   updateOwnLinkedPerson,
   UserPersonLinkRecord,
 } from '../services/memberProfileService';
-import { Pessoa } from '../types';
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  obterPreferenciasNotificacao,
+  salvarPreferenciasNotificacao,
+} from '../services/userEngagementService';
+import { Pessoa, PreferenciaNotificacao } from '../types';
 import {
   buildEditablePersonFormState,
   cleanPersonPayload,
   formatPersonName,
   formatPhone,
   getInitials,
-  getSocialPlaceholder,
   maskBirthDate,
   normalizeBirthDate,
   normalizeLocation,
@@ -53,6 +57,72 @@ import { getZodiacSignFromBirthDate } from '../utils/zodiac';
 const AVATAR_BUCKET = 'person-avatars';
 const AVATAR_SIZE = 512;
 const LOCATION_FORMAT_HELPER = 'Use o formato Nome da Cidade/UF. Exemplo: São José dos Pinhais/PR.';
+
+const SOCIAL_PROFILE_PREFIXES: Record<string, string> = {
+  LinkedIn: 'linkedin.com/in/',
+  Facebook: 'facebook.com/',
+  Instagram: 'instagram.com/',
+  TikTok: 'tiktok.com/@',
+};
+
+type NotificationPreferenceKey =
+  | 'receber_aniversarios'
+  | 'receber_datas_memoria'
+  | 'receber_eventos'
+  | 'receber_avisos_gerais'
+  | 'receber_email_novo_usuario'
+  | 'receber_email_datas_especiais'
+  | 'receber_email_novas_mensagens_forum'
+  | 'receber_email_novos_registros_historicos'
+  | 'receber_email_evento_historico_familia';
+
+const NOTIFICATION_OPTIONS: Array<{ key: NotificationPreferenceKey; label: string; description: string }> = [
+  {
+    key: 'receber_aniversarios',
+    label: 'Aniversários',
+    description: 'Avisos sobre aniversários de familiares.',
+  },
+  {
+    key: 'receber_datas_memoria',
+    label: 'Datas de memória',
+    description: 'Lembretes de datas marcantes da família.',
+  },
+  {
+    key: 'receber_eventos',
+    label: 'Eventos familiares',
+    description: 'Convites e atualizações de eventos.',
+  },
+  {
+    key: 'receber_avisos_gerais',
+    label: 'Avisos gerais',
+    description: 'Comunicados importantes da plataforma.',
+  },
+  {
+    key: 'receber_email_novo_usuario',
+    label: 'Email sobre novo usuário',
+    description: 'Quando um novo familiar entra na plataforma.',
+  },
+  {
+    key: 'receber_email_datas_especiais',
+    label: 'Email sobre datas especiais',
+    description: 'Aniversários, memórias e datas importantes.',
+  },
+  {
+    key: 'receber_email_novas_mensagens_forum',
+    label: 'Email sobre mensagens no fórum',
+    description: 'Atualizações em conversas familiares.',
+  },
+  {
+    key: 'receber_email_novos_registros_historicos',
+    label: 'Email sobre registros históricos',
+    description: 'Fotos, documentos e memórias adicionados.',
+  },
+  {
+    key: 'receber_email_evento_historico_familia',
+    label: 'Email sobre evento histórico',
+    description: 'Avisos relacionados à história familiar.',
+  },
+];
 
 type SocialProfileForm = {
   id: string;
@@ -213,6 +283,7 @@ export function MeusDados() {
   const [form, setForm] = useState<EditableOwnPersonPayload>(buildEditablePersonFormState());
   const [complemento, setComplemento] = useState('');
   const [socialProfiles, setSocialProfiles] = useState<SocialProfileForm[]>(() => [createSocialProfile()]);
+  const [notificationPreferences, setNotificationPreferences] = useState<PreferenciaNotificacao | null>(null);
   const [errors, setErrors] = useState<PersonFieldErrors>({});
   const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
@@ -263,6 +334,18 @@ export function MeusDados() {
         setComplemento(draft?.complemento ?? '');
         isDirtyRef.current = Boolean(draft);
       }
+
+      const preferences = await obterPreferenciasNotificacao(user.id);
+      if (!mounted) return;
+      setNotificationPreferences({
+        ...preferences,
+        ...Object.fromEntries(
+          Object.entries(DEFAULT_NOTIFICATION_PREFERENCES).map(([key, defaultValue]) => [
+            key,
+            (preferences as Record<string, unknown>)[key] === false ? false : defaultValue,
+          ]),
+        ),
+      } as PreferenciaNotificacao);
 
       hasInitializedFormRef.current = true;
       initializedPessoaIdRef.current = nextPessoaId;
@@ -462,6 +545,16 @@ export function MeusDados() {
     syncFirstSocialProfileToLegacyFields(ensuredProfiles);
   };
 
+  const updateNotificationPreference = (key: NotificationPreferenceKey, checked: boolean) => {
+    setNotificationPreferences((current) => ({
+      id: current?.id ?? `local-${user?.id ?? 'user'}`,
+      user_id: current?.user_id ?? user?.id ?? '',
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      ...current,
+      [key]: checked,
+    }));
+  };
+
   const normalizeFieldOnBlur = (field: keyof EditableOwnPersonPayload) => {
     const value = String(form[field] ?? '');
 
@@ -629,6 +722,22 @@ export function MeusDados() {
       return;
     }
 
+    if (notificationPreferences) {
+      try {
+        const savedPreferences = await salvarPreferenciasNotificacao(user.id, notificationPreferences);
+        setNotificationPreferences(savedPreferences);
+        if (savedPreferences.id.startsWith('local-')) {
+          toast.warning('Dados pessoais salvos, mas as preferências de notificação ficaram apenas locais.');
+        }
+      } catch (notificationError) {
+        toast.warning(
+          notificationError instanceof Error
+            ? `Dados pessoais salvos, mas não foi possível salvar notificações: ${notificationError.message}`
+            : 'Dados pessoais salvos, mas não foi possível salvar as preferências de notificação.',
+        );
+      }
+    }
+
     setSaving(false);
 
     if (user?.id && pessoa.id) {
@@ -701,9 +810,12 @@ export function MeusDados() {
                 aria-invalid={Boolean(errors.data_nascimento)}
               />
               {shouldSuggestFullBirthDate && (
-                <p className="text-xs text-gray-500">
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>
                   Se souber, adicione também o dia e o mês de nascimento.
-                </p>
+                  </p>
+                </div>
               )}
             </Field>
             <Field label="Signo">
@@ -739,6 +851,11 @@ export function MeusDados() {
             <Field label="Endereço">
               <Input
                 ref={addressInputRef}
+                name="google-places-address-input"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 value={String(form.endereco ?? '')}
                 onChange={(e) => updateTextField('endereco', e.target.value)}
                 placeholder="Rua, número, bairro, cidade, CEP"
@@ -758,57 +875,72 @@ export function MeusDados() {
             <div className="space-y-2 md:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <Label>Redes sociais</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9 shrink-0"
-                  onClick={addSocialProfile}
-                  aria-label="Adicionar rede social"
-                  title="Adicionar rede social"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
               </div>
 
               <div className="space-y-3">
                 {socialProfiles.map((profile, index) => (
-                  <div key={profile.id} className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_auto] md:items-start">
-                    <Field label="Rede social" error={index === 0 ? errors.rede_social : undefined}>
+                  <div key={profile.id} className="space-y-2">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(180px,0.45fr)_minmax(0,1fr)] md:items-start">
                       <select
                         value={profile.rede}
                         onChange={(event) => updateSocialProfile(profile.id, 'rede', event.target.value)}
                         className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
                         aria-invalid={index === 0 ? Boolean(errors.rede_social) : undefined}
                       >
-                        <option value="">Selecione uma rede</option>
+                        <option value="">Selecione a plataforma</option>
                         {SOCIAL_NETWORKS.map((network) => (
                           <option key={network} value={network}>
                             {network}
                           </option>
                         ))}
                       </select>
-                    </Field>
-                    <Field label="Perfil da Rede Social" error={index === 0 ? errors.instagram_usuario : undefined}>
-                      <Input
-                        value={profile.perfil}
-                        onChange={(e) => updateSocialProfile(profile.id, 'perfil', e.target.value)}
-                        placeholder={getSocialPlaceholder(profile.rede)}
-                        aria-invalid={index === 0 ? Boolean(errors.instagram_usuario) : undefined}
-                      />
-                    </Field>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 shrink-0 md:mt-8"
-                      onClick={() => removeSocialProfile(profile.id)}
-                      disabled={socialProfiles.length === 1}
-                      aria-label="Remover rede social"
-                      title="Remover rede social"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                      {profile.rede && (
+                        <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+                          <div className="flex min-w-0 flex-1">
+                            <span className="inline-flex h-10 shrink-0 items-center rounded-l-md border border-r-0 border-gray-300 bg-gray-50 px-3 text-sm text-gray-600">
+                              {SOCIAL_PROFILE_PREFIXES[profile.rede]}
+                            </span>
+                            <Input
+                              value={profile.perfil}
+                              onChange={(e) => updateSocialProfile(profile.id, 'perfil', e.target.value)}
+                              placeholder="identificador"
+                              className="rounded-l-none"
+                              aria-invalid={index === 0 ? Boolean(errors.instagram_usuario) : undefined}
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10 shrink-0"
+                              onClick={addSocialProfile}
+                              aria-label="Adicionar rede social"
+                              title="Adicionar rede social"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10 shrink-0"
+                              onClick={() => removeSocialProfile(profile.id)}
+                              disabled={socialProfiles.length === 1}
+                              aria-label="Remover rede social"
+                              title="Remover rede social"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {index === 0 && (errors.rede_social || errors.instagram_usuario) && (
+                      <p className="text-xs font-medium text-red-600">
+                        {errors.rede_social || errors.instagram_usuario}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -849,7 +981,7 @@ export function MeusDados() {
             />
             <ToggleField
               label="Exibir meu endereço para outros familiares"
-              description="Endereço fica oculto por padrão."
+              description="Controla a visualização do endereço no perfil."
               checked={form.permitir_exibir_endereco !== false}
               onCheckedChange={(checked) => updateField('permitir_exibir_endereco', checked)}
             />
@@ -863,6 +995,24 @@ export function MeusDados() {
               }}
             />
           </div>
+
+          <section className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="mb-4">
+              <h2 className="text-base font-semibold text-gray-900">Preferências de notificação</h2>
+              <p className="mt-1 text-sm text-gray-500">Escolha quais avisos familiares deseja receber.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {NOTIFICATION_OPTIONS.map((option) => (
+                <ToggleField
+                  key={option.key}
+                  label={option.label}
+                  description={option.description}
+                  checked={notificationPreferences?.[option.key] !== false}
+                  onCheckedChange={(checked) => updateNotificationPreference(option.key, checked)}
+                />
+              ))}
+            </div>
+          </section>
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             <Button type="submit" disabled={saving} className="sm:min-w-[220px]">
