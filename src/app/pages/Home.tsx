@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router';
 
@@ -85,6 +85,7 @@ import {
   Star,
   Bell,
   UserCircle2,
+  Home as HomeIcon,
   LogIn,
   LogOut,
   Pencil,
@@ -129,6 +130,7 @@ export function Home() {
   const { user, signOut } = useAuth();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<string | undefined>();
   const [linkedPersonId, setLinkedPersonId] = useState<string | undefined>();
   const [treeFocusPersonId, setTreeFocusPersonId] = useState<string | undefined>();
@@ -178,6 +180,7 @@ export function Home() {
   } | null>(null);
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [edgeFilters, setEdgeFilters] = useState({
     conjugal: true,
@@ -415,6 +418,16 @@ export function Home() {
     return () => window.clearTimeout(timeoutId);
   }, [searchTerm]);
 
+  useEffect(() => {
+    if (!searchExpanded) return;
+
+    const focusTimer = window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 160);
+
+    return () => window.clearTimeout(focusTimer);
+  }, [searchExpanded]);
+
   const navigateToPersonProfile = useCallback(
     (personId: string) => {
       const path = `/pessoa/${personId}`;
@@ -447,6 +460,8 @@ export function Home() {
     (pessoa: Pessoa) => {
       setSelectedPersonId(pessoa.id);
       setSearchTerm('');
+      setPessoasFiltradas([]);
+      setSearchExpanded(false);
 
       if (!isMobile) {
         navigateToPersonProfile(pessoa.id);
@@ -625,8 +640,7 @@ export function Home() {
     ''
   ).trim();
   const displayName = getShortDisplayName(fullDisplayName);
-  const centralDisplayName = getShortDisplayName(centralReferencePerson?.nome_completo || '');
-  const treeTitleName = centralDisplayName || displayName || 'Pessoa central';
+  const accountFirstName = getFirstName(fullDisplayName);
   const avatarUrl =
     linkedPerson?.foto_principal_url ||
     profile?.avatar_url ||
@@ -879,12 +893,12 @@ export function Home() {
     <div className="h-screen flex flex-col bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-3 py-3 shadow-sm lg:px-5">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
-          <div className="flex min-w-0 items-center gap-3 lg:w-56">
+          <div className="flex min-w-fit items-center gap-3 lg:w-auto lg:shrink-0">
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-bold text-gray-900 lg:text-xl">
-                Linha Genealógica de {treeTitleName}
+              <h1 className="whitespace-normal text-lg font-bold leading-tight text-gray-900 sm:whitespace-nowrap lg:text-xl">
+                Família Souza Barros
               </h1>
-              <p className="truncate text-xs text-gray-500 lg:text-sm">Minha Árvore</p>
+              <p className="text-xs text-gray-500 lg:text-sm">Minha Árvore</p>
             </div>
           </div>
 
@@ -892,10 +906,12 @@ export function Home() {
             <Button
               variant="outline"
               className="h-9 shrink-0 gap-2 px-3"
+              title="Curiosidades"
+              aria-label="Abrir Curiosidades"
               onClick={() => setAiDialogOpen(true)}
             >
               <Sparkles className="h-4 w-4" />
-              <span className="hidden xl:inline">Curiosidades</span>
+              <span className="hidden xl:inline-flex">Curiosidades</span>
             </Button>
 
             <Button
@@ -906,17 +922,35 @@ export function Home() {
               onClick={() => navigateFromHome('/forum')}
             >
               <MessageCircle className="h-4 w-4" />
-              <span>Fórum</span>
+              <span className="hidden xl:inline-flex">Fórum</span>
             </Button>
 
             <Button
               variant="outline"
               className="h-9 shrink-0 gap-2 px-3"
+              title="Calendário familiar"
+              aria-label="Abrir Calendário familiar"
               onClick={() => navigateFromHome('/calendario-familiar')}
             >
               <CalendarDays className="h-4 w-4" />
-              <span>Calendário</span>
+              <span className="hidden xl:inline-flex">Calendário</span>
             </Button>
+
+            <Select value={treeViewMode} onValueChange={(value) => setTreeViewMode(value as TreeViewMode)}>
+              <SelectTrigger
+                className="h-9 w-auto min-w-[168px] shrink-0 gap-2 border-blue-300 bg-blue-50 px-3 text-sm font-semibold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-100 focus:ring-2 focus:ring-blue-200 sm:min-w-[210px]"
+                aria-label="Mude a Visualização"
+                title="Mude a Visualização"
+              >
+                <Network className="h-4 w-4 shrink-0 text-blue-700" />
+                <span className="hidden sm:inline">Mude a Visualização</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="minha-arvore">Minha Árvore</SelectItem>
+                <SelectItem value="genealogia">Genealogia</SelectItem>
+              </SelectContent>
+            </Select>
 
             {isMobile && (
               <Button
@@ -930,33 +964,61 @@ export function Home() {
               </Button>
             )}
 
-            <div className="flex min-w-[220px] flex-1 items-center gap-2 lg:max-w-sm xl:max-w-md">
-              <div className="relative min-w-0 flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  type="text"
-                  placeholder="Buscar por nome ou local..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-9 pl-10"
-                />
+            <div className="relative ml-auto flex min-w-0 flex-row-reverse items-center">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0 bg-white"
+                title="Buscar por nome ou local"
+                aria-label={searchExpanded ? 'Busca expandida' : 'Abrir busca'}
+                onClick={() => setSearchExpanded(true)}
+              >
+                <Search className="h-4 w-4" />
+              </Button>
 
-                {searchTerm && pessoasFiltradas.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
-                    {pessoasFiltradas.map((pessoa) => (
-                      <button
-                        key={pessoa.id}
-                        onClick={() => handleSearchSelect(pessoa)}
-                        className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
-                      >
-                        <p className="font-medium text-sm text-gray-900">{pessoa.nome_completo}</p>
-                        {pessoa.local_nascimento && (
-                          <p className="text-xs text-gray-500 mt-1">📍 {pessoa.local_nascimento}</p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <div
+                className={[
+                  'relative overflow-visible transition-all duration-300 ease-out',
+                  searchExpanded ? 'w-[min(68vw,320px)] opacity-100' : 'w-0 opacity-0',
+                ].join(' ')}
+              >
+                <div className="pr-2">
+                  <Input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Buscar por nome ou local..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onBlur={() => {
+                      window.setTimeout(() => {
+                        if (!searchTerm.trim()) {
+                          setSearchExpanded(false);
+                        }
+                      }, 120);
+                    }}
+                    className="h-9"
+                    tabIndex={searchExpanded ? 0 : -1}
+                  />
+
+                  {searchExpanded && searchTerm && pessoasFiltradas.length > 0 && (
+                    <div className="absolute left-0 right-2 top-full z-50 mt-2 max-h-80 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                      {pessoasFiltradas.map((pessoa) => (
+                        <button
+                          key={pessoa.id}
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => handleSearchSelect(pessoa)}
+                          className="w-full border-b border-gray-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50"
+                        >
+                          <p className="text-sm font-medium text-gray-900">{pessoa.nome_completo}</p>
+                          {pessoa.local_nascimento && (
+                            <p className="mt-1 text-xs text-gray-500">📍 {pessoa.local_nascimento}</p>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -965,10 +1027,14 @@ export function Home() {
             <UserMenu
               isLoggedIn={Boolean(user)}
               displayName={displayName}
+              firstName={accountFirstName}
               avatarUrl={avatarUrl}
               initials={initials}
               notificationCount={notificationCount}
               onLogin={() => navigateFromHome('/entrar')}
+              onHome={() => navigateFromHome('/')}
+              onCuriosities={() => setAiDialogOpen(true)}
+              onForum={() => navigateFromHome('/forum')}
               onEditProfile={() => navigateFromHome('/minha-arvore')}
               onFavorites={() => navigateFromHome('/meus-favoritos')}
               onCalendar={() => navigateFromHome('/calendario-familiar')}
@@ -1614,13 +1680,25 @@ function getShortDisplayName(name: string) {
   return `${parts[0]} ${parts[parts.length - 1]}`;
 }
 
+function getFirstName(value?: string | null) {
+  const clean = value?.trim();
+  if (!clean) return 'Conta';
+
+  const beforeEmail = clean.includes('@') ? clean.split('@')[0] : clean;
+  return beforeEmail.split(/\s+/)[0] || 'Conta';
+}
+
 function UserMenu({
   isLoggedIn,
   displayName,
+  firstName,
   avatarUrl,
   initials,
   notificationCount,
   onLogin,
+  onHome,
+  onCuriosities,
+  onForum,
   onEditProfile,
   onFavorites,
   onCalendar,
@@ -1630,10 +1708,14 @@ function UserMenu({
 }: {
   isLoggedIn: boolean;
   displayName: string;
+  firstName: string;
   avatarUrl: string | null;
   initials: string;
   notificationCount: number;
   onLogin: () => void;
+  onHome: () => void;
+  onCuriosities: () => void;
+  onForum: () => void;
   onEditProfile: () => void;
   onFavorites: () => void;
   onCalendar: () => void;
@@ -1646,9 +1728,9 @@ function UserMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="group relative flex h-12 shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-1.5 pr-2 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          title={isLoggedIn ? displayName || 'Conta do usuário' : 'Login'}
-          aria-label={isLoggedIn ? displayName || 'Conta do usuário' : 'Login'}
+          className="group relative flex min-h-12 min-w-[154px] shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          title={isLoggedIn ? firstName || displayName || 'Conta do usuário' : 'Login'}
+          aria-label={isLoggedIn ? `Menu de ${firstName || displayName || 'usuário'}` : 'Login'}
         >
           <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-gradient-to-br from-blue-600 to-blue-700 text-sm font-semibold text-white">
             {avatarUrl ? (
@@ -1668,16 +1750,16 @@ function UserMenu({
               {notificationCount > 99 ? '99+' : notificationCount}
             </span>
           )}
-          <span className="hidden leading-none sm:block">
-            <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Menu</span>
-            <span className="mt-1 flex items-center gap-1 text-xs font-semibold text-gray-800">
-              Conta
-              <ChevronDown className="h-3 w-3 text-gray-500 transition group-data-[state=open]:rotate-180" />
+          <span className="min-w-0 flex-1 leading-none">
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">MENU</span>
+            <span className="mt-1 block whitespace-nowrap text-sm font-semibold text-gray-800">
+              {isLoggedIn ? firstName : 'Login'}
             </span>
           </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-gray-500 transition group-data-[state=open]:rotate-180" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
+      <DropdownMenuContent align="end" className="w-64">
         {!isLoggedIn ? (
           <DropdownMenuItem onClick={onLogin}>
             <LogIn className="h-4 w-4" />
@@ -1685,9 +1767,17 @@ function UserMenu({
           </DropdownMenuItem>
         ) : (
           <>
-            <DropdownMenuItem onClick={onEditProfile}>
-              <Pencil className="h-4 w-4" />
-              Editar Perfil
+            <DropdownMenuItem onClick={onHome}>
+              <HomeIcon className="h-4 w-4" />
+              Página Inicial
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onCuriosities}>
+              <Sparkles className="h-4 w-4" />
+              Curiosidades
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onForum}>
+              <MessageCircle className="h-4 w-4" />
+              Fórum
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onFavorites}>
               <Star className="h-4 w-4" />
@@ -1706,7 +1796,15 @@ function UserMenu({
               Painel administrativo
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onSignOut} variant="destructive">
+            <DropdownMenuItem onClick={onEditProfile} className="py-1 text-xs text-gray-600">
+              <Pencil className="h-3.5 w-3.5" />
+              Atualizar Perfil
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onNotifications} className="py-1 text-xs text-gray-600">
+              <Bell className="h-3.5 w-3.5" />
+              Editar Notificações
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onSignOut} variant="destructive" className="py-1 text-xs">
               <LogOut className="h-4 w-4" />
               Sair
             </DropdownMenuItem>
