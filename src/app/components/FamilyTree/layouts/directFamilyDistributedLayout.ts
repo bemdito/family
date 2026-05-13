@@ -805,6 +805,59 @@ function addTitle(nodes: Node[], centralPersonName: string) {
   );
 }
 
+export function collectDirectFamilyScopePersonIds(
+  graph: TreeLayoutParams,
+  options: DirectFamilyLayoutOptions = {}
+) {
+  const filters = options.filters || DEFAULT_DIRECT_RELATIVE_FILTERS;
+  const personNodeById = new Map(graph.personNodes.map((node) => [node.id, node]));
+  const pessoasById = new Map(graph.pessoas.map((pessoa) => [pessoa.id, pessoa]));
+  const index = buildRelationshipIndex(graph.relacionamentos);
+  const centralPersonId = options.centralPersonId && personNodeById.has(options.centralPersonId)
+    ? options.centralPersonId
+    : graph.pessoas[0]?.id;
+  const scopeIds = new Set<string>();
+
+  if (!centralPersonId || !personNodeById.has(centralPersonId)) {
+    return scopeIds;
+  }
+
+  const addIds = (ids: string[]) => {
+    ids.forEach((id) => {
+      if (personNodeById.has(id)) {
+        scopeIds.add(id);
+      }
+    });
+  };
+
+  scopeIds.add(centralPersonId);
+
+  const sides = groupByPaternalMaternalSide(centralPersonId, index, pessoasById);
+  addIds(filters.tataravos ? sides.paternal.greatGreatGrandparents : []);
+  addIds(filters.bisavos ? sides.paternal.greatGrandparents : []);
+  addIds(filters.avos ? sides.paternal.grandparents : []);
+  addIds(sides.paternal.parent);
+  addIds(filters.tios ? sides.paternal.uncles : []);
+  addIds(filters.primos ? sides.paternal.cousins : []);
+  addIds(filters.tataravos ? sides.maternal.greatGreatGrandparents : []);
+  addIds(filters.bisavos ? sides.maternal.greatGrandparents : []);
+  addIds(filters.avos ? sides.maternal.grandparents : []);
+  addIds(sides.maternal.parent);
+  addIds(filters.tios ? sides.maternal.uncles : []);
+  addIds(filters.primos ? sides.maternal.cousins : []);
+
+  const allSiblings = findSiblings(centralPersonId, index, pessoasById);
+  const children = findChildren(centralPersonId, index, pessoasById);
+
+  addIds(filters.irmaos ? allSiblings : []);
+  addIds(filters.sobrinhos ? sortPersonIds(allSiblings.flatMap((id) => findChildren(id, index, pessoasById)), pessoasById) : []);
+  addIds(filters.conjuge ? sortPersonIds(Array.from(index.spousesByPerson.get(centralPersonId) || []), pessoasById) : []);
+  addIds(filters.filhos ? children : []);
+  addIds(filters.netos ? sortPersonIds(children.flatMap((id) => findChildren(id, index, pessoasById)), pessoasById) : []);
+
+  return scopeIds;
+}
+
 function addLegend(nodes: Node[]) {
   nodes.push({
     id: 'direct-legend',

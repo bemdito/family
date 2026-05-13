@@ -690,7 +690,7 @@ export function Home() {
     <>
       {activeSidebarPanel === 'filters' && (
         <div className="space-y-4">
-          {treeViewMode === 'genealogia' ? (
+          {treeViewMode === 'genealogia' || treeViewMode === 'visao-completa' ? (
             <GenealogyFilterGrid
               filters={genealogyFilters}
               onToggle={toggleGenealogyFilter}
@@ -901,7 +901,12 @@ export function Home() {
     []
   );
   const isSearchExpanded = searchExpanded;
-  const currentTreeViewLabel = treeViewMode === 'genealogia' ? 'Genealogia' : 'Minha Árvore';
+  const currentTreeViewLabel =
+    treeViewMode === 'genealogia'
+      ? 'Genealogia'
+      : treeViewMode === 'visao-completa'
+        ? 'Visão Completa'
+        : 'Minha Árvore';
   const headerActionTextClassName = isSearchExpanded ? 'hidden' : 'hidden xl:inline-flex';
 
   return (
@@ -930,6 +935,7 @@ export function Home() {
               <SelectContent>
                 <SelectItem value="minha-arvore">Minha Árvore</SelectItem>
                 <SelectItem value="genealogia">Genealogia</SelectItem>
+                <SelectItem value="visao-completa">Visão Completa</SelectItem>
               </SelectContent>
             </Select>
 

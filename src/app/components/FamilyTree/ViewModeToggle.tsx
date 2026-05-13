@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type TreeViewMode = 'minha-arvore' | 'genealogia';
+export type TreeViewMode = 'minha-arvore' | 'genealogia' | 'visao-completa';
 
 interface ViewModeToggleProps {
   value: TreeViewMode;
@@ -10,6 +10,7 @@ interface ViewModeToggleProps {
 const options: Array<{ value: TreeViewMode; label: string }> = [
   { value: 'minha-arvore', label: 'Minha Árvore' },
   { value: 'genealogia', label: 'Genealogia' },
+  { value: 'visao-completa', label: 'Visão Completa' },
 ];
 
 export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {

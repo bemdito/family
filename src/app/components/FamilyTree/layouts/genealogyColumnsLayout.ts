@@ -1080,14 +1080,7 @@ export function genealogyColumnsLayout(
   const totalWidth = groups.length * CARD_WIDTH + Math.max(0, groups.length - 1) * COLUMN_GAP;
   const startX = -totalWidth / 2;
   const getColumnX = (columnIndex: number) => startX + columnIndex * (CARD_WIDTH + COLUMN_GAP);
-  const generation4GroupIndex = groups.findIndex((group) => group.key === 4);
-  const generation5GroupIndex = groups.findIndex((group) => group.key === 5);
-  const generation6GroupIndex = groups.findIndex((group) => group.key === 6);
-  const generation4Group = generation4GroupIndex >= 0 ? groups[generation4GroupIndex] : undefined;
-  const generation5Group = generation5GroupIndex >= 0 ? groups[generation5GroupIndex] : undefined;
-  const generation6Group = generation6GroupIndex >= 0 ? groups[generation6GroupIndex] : undefined;
-  const shouldLayoutGeneration4And5Together = Boolean(generation4Group && generation5Group);
-  const shouldLayoutGeneration5And6Together = Boolean(generation5Group && generation6Group);
+  const columnIndexByGeneration = new Map(groups.map((group, index) => [group.key, index]));
 
   addLabelNode(
     nodes,
@@ -1105,15 +1098,24 @@ export function genealogyColumnsLayout(
     const labelId = group.key === null ? 'genealogy-generation-empty' : `genealogy-generation-${group.key}`;
 
     addLabelNode(nodes, labelId, group.label, x, COLUMN_TOP, CARD_WIDTH, 'group');
+  });
 
+  groups.forEach((group, columnIndex) => {
+    const x = getColumnX(columnIndex);
     const firstCardY = COLUMN_TOP + COLUMN_LABEL_HEIGHT + LABEL_TO_CARD_GAP;
+    const nextGenerationKey = typeof group.key === 'number' ? group.key + 1 : undefined;
+    const childGroupIndex = nextGenerationKey !== undefined
+      ? columnIndexByGeneration.get(nextGenerationKey)
+      : undefined;
+    const childGroup = childGroupIndex !== undefined ? groups[childGroupIndex] : undefined;
+    const hasPositionedGroupPeople = group.people.some((placement) => positionedPeople.has(placement.pessoa.id));
 
-    if (group.key === 4 && generation4Group) {
+    if (childGroup) {
       layoutAdjacentGenerationFamilyUnits({
-        parentGroup: generation4Group,
-        childGroup: generation5Group,
+        parentGroup: group,
+        childGroup,
         parentX: x,
-        childX: generation5GroupIndex >= 0 ? getColumnX(generation5GroupIndex) : undefined,
+        childX: getColumnX(childGroupIndex),
         baseY: firstCardY,
         relationshipIndex,
         personNodeById,
@@ -1123,38 +1125,13 @@ export function genealogyColumnsLayout(
         edges,
         positionedPeople,
         familyConnectorDrafts,
-        positionParents: true,
+        positionParents: !hasPositionedGroupPeople,
       });
 
       return;
     }
 
-    if (group.key === 5 && generation5Group && shouldLayoutGeneration5And6Together) {
-      layoutAdjacentGenerationFamilyUnits({
-        parentGroup: generation5Group,
-        childGroup: generation6Group,
-        parentX: x,
-        childX: generation6GroupIndex >= 0 ? getColumnX(generation6GroupIndex) : undefined,
-        baseY: firstCardY,
-        relationshipIndex,
-        personNodeById,
-        peopleById,
-        filters,
-        nodes,
-        edges,
-        positionedPeople,
-        familyConnectorDrafts,
-        positionParents: !shouldLayoutGeneration4And5Together,
-      });
-
-      return;
-    }
-
-    if (group.key === 5 && shouldLayoutGeneration4And5Together) {
-      return;
-    }
-
-    if (group.key === 6 && shouldLayoutGeneration5And6Together) {
+    if (hasPositionedGroupPeople) {
       return;
     }
 

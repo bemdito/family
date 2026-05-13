@@ -17,7 +17,11 @@ import { nodeTypes } from './nodeTypes';
 import { OrthogonalChildEdge } from './OrthogonalChildEdge';
 import { GenealogySpouseEdge } from './GenealogySpouseEdge';
 import { buildTreeGraph } from './buildTreeGraph';
-import { directFamilyDistributedLayout } from './layouts/directFamilyDistributedLayout';
+import {
+  collectDirectFamilyScopePersonIds,
+  directFamilyDistributedLayout,
+} from './layouts/directFamilyDistributedLayout';
+import { filterGraphToPersonalScope } from './layouts/filterPersonalTreeScope';
 import { genealogyColumnsLayout } from './layouts/genealogyColumnsLayout';
 import type { TreeViewMode } from './ViewModeToggle';
 import {
@@ -376,10 +380,14 @@ async function saveVisibleTreeImage(container: HTMLDivElement | null, viewMode: 
   const link = document.createElement('a');
 
   link.href = imageUrl;
-  link.download = viewMode === 'genealogia' ? 'arvore-genealogica.png' : 'minha-arvore.png';
+  link.download = viewMode === 'minha-arvore' ? 'minha-arvore.png' : 'arvore-genealogica.png';
   document.body.appendChild(link);
   link.click();
   link.remove();
+}
+
+function usesGenealogyLayout(viewMode: TreeViewMode) {
+  return viewMode === 'genealogia' || viewMode === 'visao-completa';
 }
 
 export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(function FamilyTree({
@@ -416,14 +424,15 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
   const directFamilyViewportZoom = directFamilyCurrentZoom ?? directFamilyMinZoom;
   const directFamilyCanPan = directFamilyViewportZoom > directFamilyFittedZoom + DIRECT_FAMILY_MIN_ZOOM_TOLERANCE;
   const directFamilyMaxZoom = isMobile ? DIRECT_FAMILY_MOBILE_MAX_ZOOM : DIRECT_FAMILY_MAX_ZOOM;
-  const activeMinZoom = viewMode === 'genealogia'
+  const isGenealogyLayout = usesGenealogyLayout(viewMode);
+  const activeMinZoom = isGenealogyLayout
     ? (isMobile ? GENEALOGY_MOBILE_MIN_ZOOM : GENEALOGY_MIN_ZOOM)
     : directFamilyMinZoom;
-  const activeMaxZoom = viewMode === 'genealogia'
+  const activeMaxZoom = isGenealogyLayout
     ? (isMobile ? GENEALOGY_MOBILE_MAX_ZOOM : GENEALOGY_MAX_ZOOM)
     : directFamilyMaxZoom;
   const activeFittedZoom = directFamilyFitZoom ?? activeMinZoom;
-  const activeCanPan = viewMode === 'genealogia' ? true : directFamilyCanPan;
+  const activeCanPan = isGenealogyLayout ? true : directFamilyCanPan;
   const effectiveCentralPersonId = centralPersonId || selectedPersonId || pessoas[0]?.id;
 
   const dataHash = useMemo(() => {
@@ -454,13 +463,23 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
       edgeFilters,
     });
 
-    if (viewMode === 'genealogia') {
-      return genealogyColumnsLayout(graph, {
+    const personalScopeGraph = viewMode === 'visao-completa'
+      ? graph
+      : filterGraphToPersonalScope(
+          graph,
+          collectDirectFamilyScopePersonIds(graph, {
+            centralPersonId: effectiveCentralPersonId,
+          })
+        );
+    const layoutGraph = viewMode === 'visao-completa' ? graph : personalScopeGraph;
+
+    if (isGenealogyLayout) {
+      return genealogyColumnsLayout(layoutGraph, {
         filters: genealogyFilters,
       });
     }
 
-    return directFamilyDistributedLayout(graph, {
+    return directFamilyDistributedLayout(layoutGraph, {
       centralPersonId: effectiveCentralPersonId,
       filters: directRelativeFilters,
     });
@@ -479,6 +498,7 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
     directRelativeFilters,
     genealogyFilters,
     effectiveCentralPersonId,
+    isGenealogyLayout,
     viewMode,
   ]);
 
@@ -536,7 +556,7 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
       return null;
     }
 
-    if (viewMode === 'genealogia') {
+    if (isGenealogyLayout) {
       return getGenealogyViewport(
         directFamilyBounds,
         containerSize.width,
@@ -551,18 +571,18 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
       containerSize.height,
       isMobile ? DIRECT_FAMILY_MOBILE_VIEWPORT_PADDING : DIRECT_FAMILY_VIEWPORT_PADDING
     );
-  }, [directFamilyBounds, containerSize, isMobile, viewMode]);
+  }, [directFamilyBounds, containerSize, isGenealogyLayout, isMobile]);
 
   const directFamilyTranslateExtent = useMemo<CoordinateExtent | undefined>(() => {
     if (!directFamilyBounds) return undefined;
 
     return getDirectFamilyTranslateExtent(
       directFamilyBounds,
-      viewMode === 'genealogia'
+      isGenealogyLayout
         ? (isMobile ? GENEALOGY_MOBILE_TRANSLATE_PADDING : GENEALOGY_TRANSLATE_PADDING)
         : (isMobile ? DIRECT_FAMILY_MOBILE_TRANSLATE_PADDING : DIRECT_FAMILY_TRANSLATE_PADDING)
     );
-  }, [directFamilyBounds, isMobile, viewMode]);
+  }, [directFamilyBounds, isGenealogyLayout, isMobile]);
 
   useEffect(() => {
     setNodes((prevNodes) =>
@@ -672,7 +692,7 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
     (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
       setDirectFamilyCurrentZoom(viewport.zoom);
 
-      if (viewMode === 'genealogia') {
+      if (isGenealogyLayout) {
         return;
       }
 
@@ -694,7 +714,7 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
         directFamilyRecenteringRef.current = false;
       }, 260);
     },
-    [viewMode]
+    [isGenealogyLayout]
   );
 
   const handleNodeClick = useCallback(
