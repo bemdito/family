@@ -1,7 +1,7 @@
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 import { Pessoa } from '../types';
-import { createActivityLog } from './activityLogService';
+import { buildActivityActorFromUser, createActivityLog } from './activityLogService';
 
 export interface MemberProfile {
   id: string;
@@ -82,6 +82,88 @@ export type EditableOwnPersonPayload = Pick<
   | 'permitir_exibir_rede_social'
   | 'permitir_exibir_telefone'
 >;
+
+const PRIVACY_FIELDS = new Set([
+  'permitir_exibir_instagram',
+  'permitir_mensagens_whatsapp',
+  'permitir_exibir_data_nascimento',
+  'permitir_exibir_endereco',
+  'permitir_exibir_rede_social',
+  'permitir_exibir_telefone',
+]);
+
+const SENSITIVE_ACTIVITY_FIELDS = new Set([
+  'telefone',
+  'endereco',
+  'rede_social',
+  'instagram_usuario',
+  'instagram_url',
+]);
+
+function getSafeOwnPersonChangedFields(payload: EditableOwnPersonPayload) {
+  return Object.keys(payload).filter((field) => !SENSITIVE_ACTIVITY_FIELDS.has(field));
+}
+
+async function registerOwnPersonUpdateActivity(
+  pessoaId: string,
+  payload: EditableOwnPersonPayload,
+  updatedPessoa: Pessoa
+) {
+  try {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+
+    if (authError) {
+      console.error('[Supabase] Erro ao obter usuário para histórico de perfil:', authError.message);
+    }
+
+    const actor = buildActivityActorFromUser(authData.user, {
+      id: pessoaId,
+      nome_completo: updatedPessoa.nome_completo,
+    });
+
+    const changedFields = getSafeOwnPersonChangedFields(payload);
+
+    await createActivityLog({
+      ...actor,
+      action: 'person.updated',
+      entity_type: 'person',
+      entity_id: pessoaId,
+      entity_label: updatedPessoa.nome_completo,
+      metadata: {
+        changed_fields: changedFields,
+      },
+    });
+
+    if ('foto_principal_url' in payload) {
+      await createActivityLog({
+        ...actor,
+        action: 'person.photo_updated',
+        entity_type: 'person',
+        entity_id: pessoaId,
+        entity_label: updatedPessoa.nome_completo,
+        metadata: {
+          has_photo: Boolean(updatedPessoa.foto_principal_url),
+        },
+      });
+    }
+
+    const privacyFields = changedFields.filter((field) => PRIVACY_FIELDS.has(field));
+    if (privacyFields.length > 0) {
+      await createActivityLog({
+        ...actor,
+        action: 'person.privacy_updated',
+        entity_type: 'person',
+        entity_id: pessoaId,
+        entity_label: updatedPessoa.nome_completo,
+        metadata: {
+          changed_fields: privacyFields,
+        },
+      });
+    }
+  } catch (error) {
+    console.error('[Supabase] Erro ao registrar histórico de perfil:', error);
+  }
+}
 
 export async function ensureMemberProfile(userId: string, payload?: { nome_exibicao?: string | null; avatar_url?: string | null }) {
   const { data: existing, error: existingError } = await supabase
@@ -425,6 +507,10 @@ export async function updateOwnLinkedPerson(pessoaId: string, payload: EditableO
     .eq('id', pessoaId)
     .select('*')
     .single();
+
+  if (!error && data) {
+    await registerOwnPersonUpdateActivity(pessoaId, payload, data as Pessoa);
+  }
 
   return { error: error?.message, data: (data as Pessoa) ?? null };
 }

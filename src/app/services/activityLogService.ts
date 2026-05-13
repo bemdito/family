@@ -136,18 +136,16 @@ export async function createActivityLog(payload: CreateActivityLogPayload): Prom
       return null;
     }
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('activity_logs')
-      .insert(activityPayload)
-      .select('*')
-      .single();
+      .insert(activityPayload);
 
     if (error) {
-      console.error('[Supabase] Erro ao registrar activity log:', error.message);
+      console.error('[Supabase] Erro ao registrar activity log:', error.message, error);
       return null;
     }
 
-    return data ? toActivityLog(data) : null;
+    return null;
   } catch (error) {
     console.error('[Supabase] Erro inesperado ao registrar activity log:', error);
     return null;
