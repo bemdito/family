@@ -19,12 +19,16 @@ export interface GenealogyFamilyConnectorNodeData {
 export function GenealogyFamilyConnectorNode({
   data,
 }: NodeProps<GenealogyFamilyConnectorNodeData>) {
+  const ALIGNED_Y_TOLERANCE = 1;
   const childYs = data.childPoints.map((point) => point.y);
   const minChildY = childYs.length > 0 ? Math.min(...childYs) : data.originY;
   const maxChildY = childYs.length > 0 ? Math.max(...childYs) : data.originY;
   const verticalTopY = Math.min(data.originY, minChildY);
   const verticalBottomY = Math.max(data.originY, maxChildY);
   const singleChildPoint = data.childPoints.length === 1 ? data.childPoints[0] : null;
+  const isSingleChildAligned = singleChildPoint
+    ? Math.abs(data.originY - singleChildPoint.y) <= ALIGNED_Y_TOLERANCE
+    : false;
 
   return (
     <svg
@@ -43,7 +47,7 @@ export function GenealogyFamilyConnectorNode({
         strokeWidth={2}
         opacity={DIRECT_FAMILY_TOKENS.EDGE_OPACITY}
       >
-        {singleChildPoint ? (
+        {singleChildPoint && isSingleChildAligned ? (
           <line
             x1={data.originX}
             y1={data.originY}

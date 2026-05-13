@@ -89,6 +89,8 @@ const ROW_GAP = 18;
 const SPOUSE_ROW_EXTRA_GAP = 36;
 const FAMILY_UNIT_GAP = 48;
 const FAMILY_CONNECTOR_CHILD_BUS_OFFSET = 24;
+const FAMILY_CONNECTOR_LANE_GAP = 10;
+const FAMILY_CONNECTOR_MAX_LANES = 4;
 
 const GENERATION_RELATION_VARIANTS: Record<number, {
   base: DirectRelationVariant;
@@ -867,39 +869,80 @@ function addGenealogyFamilyConnectorNodes({
   positionedPeople: Map<string, PositionedPerson>;
 }) {
   const addedConnectorIds = new Set<string>();
+  const connectorItems = drafts
+    .map((draft) => {
+      const origin = getFamilyConnectorOrigin(draft.parentIds, positionedPeople);
+      if (!origin) return null;
 
-  drafts.forEach((draft) => {
-    const origin = getFamilyConnectorOrigin(draft.parentIds, positionedPeople);
-    if (!origin) return;
+      const childPoints = draft.childIds
+        .map((childId) => positionedPeople.get(childId))
+        .filter((positioned): positioned is PositionedPerson => Boolean(positioned))
+        .map((positioned) => ({
+          id: positioned.placement.pessoa.id,
+          x: positioned.x,
+          y: positioned.y + positioned.height / 2,
+        }));
 
-    const childPoints = draft.childIds
-      .map((childId) => positionedPeople.get(childId))
-      .filter((positioned): positioned is PositionedPerson => Boolean(positioned))
-      .map((positioned) => ({
-        id: positioned.placement.pessoa.id,
-        x: positioned.x,
-        y: positioned.y + positioned.height / 2,
-      }));
+      if (childPoints.length === 0) return null;
 
-    if (childPoints.length === 0) return;
+      const firstChildY = Math.min(...childPoints.map((point) => point.y));
+      const childColumnLeftX = Math.min(...childPoints.map((point) => point.x));
+      const generationPairKey = `${draft.parentGeneration ?? 'sem-geracao'}->${
+        draft.childGeneration ?? 'sem-geracao'
+      }`;
 
-    const childColumnLeftX = Math.min(...childPoints.map((point) => point.x));
-    const busX = childColumnLeftX - FAMILY_CONNECTOR_CHILD_BUS_OFFSET;
-    const connectorId = `genealogy-family-connector-${draft.id}`;
+      return {
+        draft,
+        origin,
+        childPoints,
+        firstChildY,
+        childColumnLeftX,
+        generationPairKey,
+        connectorId: `genealogy-family-connector-${draft.id}`,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
-    if (addedConnectorIds.has(connectorId)) return;
+  const laneByConnectorId = new Map<string, number>();
+  const connectorItemsByGenerationPair = new Map<string, typeof connectorItems>();
+
+  connectorItems.forEach((item) => {
+    const generationPairItems = connectorItemsByGenerationPair.get(item.generationPairKey) ?? [];
+    generationPairItems.push(item);
+    connectorItemsByGenerationPair.set(item.generationPairKey, generationPairItems);
+  });
+
+  connectorItemsByGenerationPair.forEach((generationPairItems) => {
+    generationPairItems
+      .sort((itemA, itemB) => (
+        itemA.origin.y - itemB.origin.y
+        || itemA.firstChildY - itemB.firstChildY
+        || itemA.connectorId.localeCompare(itemB.connectorId)
+      ))
+      .forEach((item, index) => {
+        laneByConnectorId.set(item.connectorId, index % FAMILY_CONNECTOR_MAX_LANES);
+      });
+  });
+
+  connectorItems.forEach((item) => {
+    const laneIndex = laneByConnectorId.get(item.connectorId) ?? 0;
+    const busX = item.childColumnLeftX
+      - FAMILY_CONNECTOR_CHILD_BUS_OFFSET
+      - laneIndex * FAMILY_CONNECTOR_LANE_GAP;
+
+    if (addedConnectorIds.has(item.connectorId)) return;
 
     const connectorNode = createGenealogyFamilyConnectorNode({
-      id: connectorId,
-      originX: origin.x,
-      originY: origin.y,
+      id: item.connectorId,
+      originX: item.origin.x,
+      originY: item.origin.y,
       busX,
-      childPoints,
+      childPoints: item.childPoints,
     });
 
     if (!connectorNode) return;
 
-    addedConnectorIds.add(connectorId);
+    addedConnectorIds.add(item.connectorId);
     nodes.unshift(connectorNode);
   });
 }
