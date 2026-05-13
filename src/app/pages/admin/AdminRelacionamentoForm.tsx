@@ -4,6 +4,7 @@ import { ArrowLeft, Save } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Input } from '../../components/ui/input';
 import {
   Select,
   SelectContent,
@@ -11,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import { Textarea } from '../../components/ui/textarea';
 import { adicionarRelacionamentoComInverso, obterTodasPessoas } from '../../services/dataService';
 import { Pessoa, SubtipoRelacionamento, TipoRelacionamento } from '../../types';
 
@@ -30,6 +32,14 @@ const SUBTIPOS_RELACIONAMENTO: Array<{ value: SubtipoRelacionamento; label: stri
   { value: 'separado', label: 'Separado' },
 ];
 
+const SUBTIPOS_FAMILIARES = SUBTIPOS_RELACIONAMENTO.filter((subtipo) =>
+  subtipo.value === 'sangue' || subtipo.value === 'adotivo'
+);
+
+const SUBTIPOS_CONJUGAIS = SUBTIPOS_RELACIONAMENTO.filter((subtipo) =>
+  subtipo.value === 'casamento' || subtipo.value === 'uniao' || subtipo.value === 'separado'
+);
+
 export function AdminRelacionamentoForm() {
   const navigate = useNavigate();
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
@@ -37,9 +47,15 @@ export function AdminRelacionamentoForm() {
   const [pessoaDestinoId, setPessoaDestinoId] = useState('');
   const [tipoRelacionamento, setTipoRelacionamento] = useState<TipoRelacionamento>('pai');
   const [subtipoRelacionamento, setSubtipoRelacionamento] = useState<SubtipoRelacionamento>('sangue');
+  const [ativo, setAtivo] = useState(true);
+  const [dataSeparacao, setDataSeparacao] = useState('');
+  const [localSeparacao, setLocalSeparacao] = useState('');
+  const [observacoes, setObservacoes] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const isConjugal = tipoRelacionamento === 'conjuge';
 
   useEffect(() => {
     async function loadPessoas() {
@@ -64,6 +80,17 @@ export function AdminRelacionamentoForm() {
     [pessoas]
   );
 
+  const handleTipoChange = (value: TipoRelacionamento) => {
+    setTipoRelacionamento(value);
+    setSubtipoRelacionamento(value === 'conjuge' ? 'casamento' : 'sangue');
+    if (value !== 'conjuge') {
+      setAtivo(true);
+      setDataSeparacao('');
+      setLocalSeparacao('');
+      setObservacoes('');
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
@@ -85,7 +112,10 @@ export function AdminRelacionamentoForm() {
         pessoa_destino_id: pessoaDestinoId,
         tipo_relacionamento: tipoRelacionamento,
         subtipo_relacionamento: subtipoRelacionamento,
-        ativo: true,
+        ativo: isConjugal ? ativo : true,
+        data_separacao: isConjugal ? dataSeparacao || undefined : undefined,
+        local_separacao: isConjugal ? localSeparacao.trim() || undefined : undefined,
+        observacoes: isConjugal ? observacoes.trim() || undefined : undefined,
       });
 
       if (!relacionamento) {
@@ -167,7 +197,7 @@ export function AdminRelacionamentoForm() {
                   <label className="text-sm font-medium text-gray-700">Tipo</label>
                   <Select
                     value={tipoRelacionamento}
-                    onValueChange={(value) => setTipoRelacionamento(value as TipoRelacionamento)}
+                    onValueChange={(value) => handleTipoChange(value as TipoRelacionamento)}
                     disabled={saving}
                   >
                     <SelectTrigger>
@@ -194,7 +224,7 @@ export function AdminRelacionamentoForm() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {SUBTIPOS_RELACIONAMENTO.map((subtipo) => (
+                      {(isConjugal ? SUBTIPOS_CONJUGAIS : SUBTIPOS_FAMILIARES).map((subtipo) => (
                         <SelectItem key={subtipo.value} value={subtipo.value}>
                           {subtipo.label}
                         </SelectItem>
@@ -203,6 +233,54 @@ export function AdminRelacionamentoForm() {
                   </Select>
                 </div>
               </div>
+
+              {isConjugal && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <h2 className="mb-4 text-sm font-semibold text-gray-900">Status conjugal</h2>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <label className="flex items-center gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={ativo}
+                        onChange={(event) => setAtivo(event.target.checked)}
+                        disabled={saving}
+                        className="h-4 w-4"
+                      />
+                      Relacionamento ativo
+                    </label>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Data de separação</label>
+                      <Input
+                        type="date"
+                        value={dataSeparacao}
+                        onChange={(event) => setDataSeparacao(event.target.value)}
+                        disabled={saving}
+                      />
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium text-gray-700">Local de separação</label>
+                      <Input
+                        value={localSeparacao}
+                        onChange={(event) => setLocalSeparacao(event.target.value)}
+                        placeholder="Cidade/UF"
+                        disabled={saving}
+                      />
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium text-gray-700">Observações internas</label>
+                      <Textarea
+                        value={observacoes}
+                        onChange={(event) => setObservacoes(event.target.value)}
+                        placeholder="Opcional"
+                        disabled={saving}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-3">
                 <Button

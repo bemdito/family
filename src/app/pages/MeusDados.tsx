@@ -17,7 +17,6 @@ import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
 import { Textarea } from '../components/ui/textarea';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabaseClient';
 import {
   GoogleAddressComponent,
   GooglePlaceResult,
@@ -37,6 +36,7 @@ import {
   obterPreferenciasNotificacao,
   salvarPreferenciasNotificacao,
 } from '../services/userEngagementService';
+import { uploadPersonAvatarFile } from '../services/storageService';
 import { Pessoa, PreferenciaNotificacao } from '../types';
 import {
   buildEditablePersonFormState,
@@ -54,7 +54,6 @@ import {
 } from '../utils/personFields';
 import { getZodiacSignFromBirthDate } from '../utils/zodiac';
 
-const AVATAR_BUCKET = 'person-avatars';
 const AVATAR_SIZE = 512;
 const LOCATION_FORMAT_HELPER = 'Use o formato Nome da Cidade/UF. Exemplo: São José dos Pinhais/PR.';
 
@@ -283,11 +282,6 @@ async function createCroppedAvatarBlob(imageSrc: string, cropPixels: Area) {
       resolve(blob);
     }, 'image/jpeg', 0.9);
   });
-}
-
-function isMissingStorageBucketError(message: string) {
-  const normalized = message.toLocaleLowerCase('pt-BR');
-  return normalized.includes('bucket not found') || (normalized.includes('bucket') && normalized.includes('not found'));
 }
 
 export function MeusDados() {
@@ -660,25 +654,15 @@ export function MeusDados() {
   const uploadAvatarBlob = async (blob: Blob) => {
     if (!user || !pessoa?.id) return { error: 'Não foi possível localizar o usuário para salvar a foto.', url: null };
 
-    const extension = 'jpg';
-    const storagePath = `${user.id}/${pessoa.id}-${Date.now()}.${extension}`;
-    const { error } = await supabase.storage
-      .from(AVATAR_BUCKET)
-      .upload(storagePath, blob, {
-        contentType: 'image/jpeg',
-        upsert: true,
-      });
-
-    if (error) {
-      if (isMissingStorageBucketError(error.message)) {
-        return { error: undefined, url: null };
-      }
-
-      return { error: error.message, url: null };
+    try {
+      const upload = await uploadPersonAvatarFile(blob, { pessoaId: pessoa.id });
+      return { error: undefined, url: upload.url };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Não foi possível enviar a foto.',
+        url: null,
+      };
     }
-
-    const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(storagePath);
-    return { error: undefined, url: data.publicUrl };
   };
 
   const handleConfirm = async (event: React.FormEvent) => {
@@ -714,11 +698,7 @@ export function MeusDados() {
         return;
       }
 
-      if (upload.url) {
-        payload.foto_principal_url = upload.url;
-      } else {
-        toast.info('Storage de avatars não configurado. O corte ficará apenas como preview local.');
-      }
+      payload.foto_principal_url = upload.url;
     }
 
     const { error: updateError, data: updatedPessoa } = await updateOwnLinkedPerson(pessoa.id, payload);

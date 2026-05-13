@@ -37,7 +37,6 @@ import {
   GooglePlacesAutocomplete,
   loadGoogleMapsPlaces,
 } from '../lib/googleMapsLoader';
-import { supabase } from '../lib/supabaseClient';
 import {
   adicionarPessoa,
   adicionarRelacionamentoComInverso,
@@ -62,6 +61,7 @@ import {
   obterPreferenciasNotificacao,
   salvarPreferenciasNotificacao,
 } from '../services/userEngagementService';
+import { uploadPersonAvatarFile } from '../services/storageService';
 import { Pessoa, PreferenciaNotificacao, Relacionamento } from '../types';
 import {
   buildEditablePersonFormState,
@@ -130,7 +130,6 @@ type MinhaArvoreDraft = {
   socialProfiles: SocialProfileForm[];
 };
 
-const AVATAR_BUCKET = 'person-avatars';
 const AVATAR_SIZE = 512;
 const LOCATION_FORMAT_HELPER = 'Use o formato Nome da Cidade/UF. Exemplo: São José dos Pinhais/PR.';
 const SOCIAL_PROFILE_PREFIXES: Record<string, string> = {
@@ -344,11 +343,6 @@ async function createCroppedAvatarBlob(imageSrc: string, cropPixels: Area) {
       resolve(blob);
     }, 'image/jpeg', 0.9);
   });
-}
-
-function isMissingStorageBucketError(message: string) {
-  const normalized = message.toLocaleLowerCase('pt-BR');
-  return normalized.includes('bucket not found') || (normalized.includes('bucket') && normalized.includes('not found'));
 }
 
 function uniquePeople(people: Pessoa[]) {
@@ -912,24 +906,15 @@ export function MinhaArvore() {
   const uploadAvatarBlob = async (blob: Blob) => {
     if (!user || !pessoaBase?.id) return { error: 'Não foi possível localizar o usuário para salvar a foto.', url: null };
 
-    const storagePath = `${user.id}/${pessoaBase.id}-${Date.now()}.jpg`;
-    const { error } = await supabase.storage
-      .from(AVATAR_BUCKET)
-      .upload(storagePath, blob, {
-        contentType: 'image/jpeg',
-        upsert: true,
-      });
-
-    if (error) {
-      if (isMissingStorageBucketError(error.message)) {
-        return { error: undefined, url: null };
-      }
-
-      return { error: error.message, url: null };
+    try {
+      const upload = await uploadPersonAvatarFile(blob, { pessoaId: pessoaBase.id });
+      return { error: undefined, url: upload.url };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Não foi possível enviar a foto.',
+        url: null,
+      };
     }
-
-    const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(storagePath);
-    return { error: undefined, url: data.publicUrl };
   };
 
   const handleSavePersonalData = async (event: React.FormEvent) => {
@@ -965,11 +950,7 @@ export function MinhaArvore() {
         return;
       }
 
-      if (upload.url) {
-        payload.foto_principal_url = upload.url;
-      } else {
-        toast.info('Storage de avatars não configurado. A foto não será persistida agora.');
-      }
+      payload.foto_principal_url = upload.url;
     }
 
     const { error: updateError, data: updatedPessoa } = await updateOwnLinkedPerson(pessoaBase.id, payload);

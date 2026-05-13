@@ -2,6 +2,7 @@ import { Pessoa, Relacionamento } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import { limparCacheParentesco } from './relationshipCacheService';
 import { createActivityLog } from './activityLogService';
+import { emitTreeDataChanged } from './treeDataCache';
 
 type SupabaseErrorLike = {
   message?: string;
@@ -44,7 +45,11 @@ const RELACIONAMENTO_COLUMNS = [
   'tipo_relacionamento',
   'subtipo_relacionamento',
   'data_casamento',
+  'data_separacao',
   'local_casamento',
+  'local_separacao',
+  'ativo',
+  'observacoes',
 ] as const;
 
 const PRIVACY_FIELDS = new Set([
@@ -56,7 +61,7 @@ const PRIVACY_FIELDS = new Set([
   'permitir_exibir_telefone',
 ]);
 
-type RelacionamentoPayload = Omit<Relacionamento, 'id'>;
+type RelacionamentoPayload = Omit<Relacionamento, 'id' | 'ativo'> & { ativo?: boolean };
 type InverseOptions = {
   inverseTipoForFilho?: 'pai' | 'mae';
 };
@@ -150,6 +155,10 @@ function getSafeChangedFields(payload: Record<string, any>) {
   return Object.keys(payload).filter((field) => field !== 'telefone' && field !== 'endereco');
 }
 
+function getSafeRelationshipChangedFields(payload: Record<string, any>) {
+  return Object.keys(payload).filter((field) => field !== 'observacoes');
+}
+
 // =====================================================
 // PESSOAS - CRUD
 // =====================================================
@@ -228,6 +237,7 @@ export async function adicionarPessoa(pessoa: Omit<Pessoa, 'id'>): Promise<Pesso
         manual_generation: data.manual_generation ?? null,
       },
     });
+    emitTreeDataChanged();
   }
 
   return data ? toPessoa(data) : undefined;
@@ -284,6 +294,8 @@ export async function atualizarPessoa(id: string, pessoa: Partial<Pessoa>): Prom
         },
       });
     }
+
+    emitTreeDataChanged();
   }
 
   return data ? toPessoa(data) : undefined;
@@ -306,7 +318,12 @@ export async function atualizarGeracaoManualPessoa(id: string, generation: numbe
     throw new Error(error.message || 'Erro ao atualizar geração manual.');
   }
 
-  return data ? toPessoa(data) : undefined;
+  const updated = data ? toPessoa(data) : undefined;
+  if (updated) {
+    emitTreeDataChanged();
+  }
+
+  return updated;
 }
 
 export async function deletarPessoa(id: string): Promise<boolean> {
@@ -320,6 +337,7 @@ export async function deletarPessoa(id: string): Promise<boolean> {
     return false;
   }
 
+  emitTreeDataChanged();
   return true;
 }
 
@@ -498,7 +516,7 @@ export async function adicionarRelacionamento(relacionamento: Omit<Relacionament
 }
 
 export function getRelacionamentoInversoPayload(
-  relacionamento: Pick<Relacionamento, 'pessoa_origem_id' | 'pessoa_destino_id' | 'tipo_relacionamento' | 'subtipo_relacionamento' | 'data_casamento' | 'local_casamento'>,
+  relacionamento: Pick<Relacionamento, 'pessoa_origem_id' | 'pessoa_destino_id' | 'tipo_relacionamento' | 'subtipo_relacionamento' | 'data_casamento' | 'data_separacao' | 'local_casamento' | 'local_separacao' | 'ativo' | 'observacoes'>,
   options: InverseOptions = {}
 ): RelacionamentoPayload | undefined {
   let tipoInverso: Relacionamento['tipo_relacionamento'] | undefined;
@@ -523,8 +541,11 @@ export function getRelacionamentoInversoPayload(
     tipo_relacionamento: tipoInverso,
     subtipo_relacionamento: relacionamento.subtipo_relacionamento,
     data_casamento: relacionamento.data_casamento,
+    data_separacao: relacionamento.data_separacao,
     local_casamento: relacionamento.local_casamento,
-    ativo: true,
+    local_separacao: relacionamento.local_separacao,
+    ativo: relacionamento.ativo ?? true,
+    observacoes: relacionamento.observacoes,
   };
 }
 
@@ -568,7 +589,10 @@ export async function adicionarRelacionamentoComInverso(
   }
 
   const inverso = getRelacionamentoInversoPayload(principal, options);
-  if (!inverso) return principal;
+  if (!inverso) {
+    emitTreeDataChanged();
+    return principal;
+  }
 
   const payload = pickDefined(inverso, RELACIONAMENTO_COLUMNS);
   const { error } = await supabase
@@ -588,10 +612,14 @@ export async function adicionarRelacionamentoComInverso(
     metadata: {
       relationship_type: principal.tipo_relacionamento,
       relationship_subtype: principal.subtipo_relacionamento ?? null,
+      ativo: principal.ativo,
+      has_separation_date: Boolean(principal.data_separacao),
+      has_observations: Boolean(principal.observacoes),
       has_inverse: Boolean(inverso),
     },
   });
 
+  emitTreeDataChanged();
   return principal;
 }
 
@@ -610,10 +638,30 @@ export async function atualizarRelacionamento(id: string, relacionamento: Partia
   }
 
   await limparCacheParentescoSemBloquear();
+
+  if (data) {
+    const updated = toRelacionamento(data);
+    await createActivityLog({
+      action: 'relationship.updated',
+      entity_type: 'relationship',
+      entity_id: updated.id,
+      entity_label: updated.tipo_relacionamento,
+      metadata: {
+        changed_fields: getSafeRelationshipChangedFields(payload),
+        relationship_type: updated.tipo_relacionamento,
+        relationship_subtype: updated.subtipo_relacionamento ?? null,
+        ativo: updated.ativo,
+        has_separation_date: Boolean(updated.data_separacao),
+        has_observations: Boolean(updated.observacoes),
+      },
+    });
+    emitTreeDataChanged();
+  }
+
   return data ? toRelacionamento(data) : undefined;
 }
 
-export async function deletarRelacionamento(id: string): Promise<boolean> {
+async function deletarRelacionamentoSemInvalidarCache(id: string): Promise<boolean> {
   const { error } = await supabase
     .from('relacionamentos')
     .delete()
@@ -626,6 +674,14 @@ export async function deletarRelacionamento(id: string): Promise<boolean> {
 
   await limparCacheParentescoSemBloquear();
   return true;
+}
+
+export async function deletarRelacionamento(id: string): Promise<boolean> {
+  const deleted = await deletarRelacionamentoSemInvalidarCache(id);
+  if (deleted) {
+    emitTreeDataChanged();
+  }
+  return deleted;
 }
 
 export const excluirRelacionamento = deletarRelacionamento;
@@ -665,12 +721,12 @@ export async function excluirRelacionamentoComInverso(id: string): Promise<boole
   }
 
   const inverso = await encontrarRelacionamentoInverso(relacionamento);
-  const deleted = await deletarRelacionamento(id);
+  const deleted = await deletarRelacionamentoSemInvalidarCache(id);
 
   if (!deleted) return false;
 
   if (inverso) {
-    await deletarRelacionamento(inverso.id);
+    await deletarRelacionamentoSemInvalidarCache(inverso.id);
   }
 
   await createActivityLog({
@@ -685,6 +741,7 @@ export async function excluirRelacionamentoComInverso(id: string): Promise<boole
     },
   });
 
+  emitTreeDataChanged();
   return true;
 }
 

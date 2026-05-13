@@ -412,7 +412,7 @@ export function MeusVinculos() {
           </Card>
 
           <div>
-            <ArquivosHistoricos arquivos={archives} onChange={setArchives} />
+            <ArquivosHistoricos arquivos={archives} onChange={setArchives} pessoaId={pessoa.id} />
           </div>
         </div>
 

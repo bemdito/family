@@ -2,31 +2,42 @@ import React, { useState } from 'react';
 import { Input } from './ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { User, Upload } from 'lucide-react';
+import { uploadPersonAvatarFile } from '../services/storageService';
 
 interface FotoUploadProps {
   value: string;
   onChange: (url: string) => void;
+  pessoaId?: string | null;
 }
 
-export function FotoUpload({ value, onChange }: FotoUploadProps) {
+export function FotoUpload({ value, onChange, pessoaId }: FotoUploadProps) {
   const [showModal, setShowModal] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Verificar se é imagem
     if (!file.type.startsWith('image/')) {
       alert('Por favor, selecione apenas arquivos de imagem');
       return;
     }
 
-    // Simular upload - em produção, isso enviaria para um servidor/storage
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      onChange(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    if (file.size > 5 * 1024 * 1024) {
+      alert('A foto deve ter no máximo 5MB');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const upload = await uploadPersonAvatarFile(file, { pessoaId });
+      onChange(upload.url);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível enviar a foto.');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   };
 
   return (
@@ -62,13 +73,14 @@ export function FotoUpload({ value, onChange }: FotoUploadProps) {
               <div className="flex items-center justify-center w-full px-4 py-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
                 <Upload className="w-4 h-4 mr-2 text-gray-600" />
                 <span className="text-sm text-gray-700">
-                  {value ? 'Alterar foto' : 'Fazer upload da foto'}
+                  {uploading ? 'Enviando...' : value ? 'Alterar foto' : 'Fazer upload da foto'}
                 </span>
               </div>
               <Input
                 type="file"
                 accept="image/*"
                 onChange={handleFileChange}
+                disabled={uploading}
                 className="hidden"
               />
             </label>

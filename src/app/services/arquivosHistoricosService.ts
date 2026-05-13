@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
 import { ArquivoHistorico } from '../types';
 import { createActivityLog } from './activityLogService';
+import { emitTreeDataChanged } from './treeDataCache';
 
 type SupabaseErrorLike = {
   message?: string;
@@ -140,5 +141,7 @@ export async function substituirArquivosHistoricosDaPessoa(
     }
   }
 
-  return listarArquivosHistoricosPorPessoa(pessoaId);
+  const nextArquivos = await listarArquivosHistoricosPorPessoa(pessoaId);
+  emitTreeDataChanged();
+  return nextArquivos;
 }

@@ -42,6 +42,11 @@ import {
   obterTodosRelacionamentos,
   buscarPessoas,
 } from '../services/dataService';
+import {
+  getCachedTreeData,
+  setCachedTreeData,
+  subscribeTreeDataChanged,
+} from '../services/treeDataCache';
 import { Pessoa, Relacionamento } from '../types';
 import {
   DEFAULT_GENEALOGY_FILTERS,
@@ -109,10 +114,6 @@ const AI_QUESTION_EXAMPLES = [
 const AI_QUESTION_PLACEHOLDER = `Pergunte, por exemplo:\n${AI_QUESTION_EXAMPLES.join('\n')}`;
 
 const AI_ENDPOINT = '/api/ai';
-let homeTreeDataCache: {
-  pessoas: Pessoa[];
-  relacionamentos: Relacionamento[];
-} | null = null;
 
 const CURIOSITY_TOPIC_OPTIONS = [
   'Dados e Contato',
@@ -140,15 +141,15 @@ export function Home() {
   const [linkedPersonId, setLinkedPersonId] = useState<string | undefined>();
   const [treeFocusPersonId, setTreeFocusPersonId] = useState<string | undefined>();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
-  const [pessoas, setPessoas] = useState<Pessoa[]>(() => homeTreeDataCache?.pessoas ?? []);
-  const [relacionamentos, setRelacionamentos] = useState<Relacionamento[]>(() => homeTreeDataCache?.relacionamentos ?? []);
+  const [pessoas, setPessoas] = useState<Pessoa[]>(() => getCachedTreeData()?.pessoas ?? []);
+  const [relacionamentos, setRelacionamentos] = useState<Relacionamento[]>(() => getCachedTreeData()?.relacionamentos ?? []);
   const [pessoasFiltradas, setPessoasFiltradas] = useState<Pessoa[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [treeLayoutRevision, setTreeLayoutRevision] = useState(0);
   const [treeViewMode, setTreeViewMode] = useState<TreeViewMode>('minha-arvore');
   const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanel>('filters');
   const [legendOpen, setLegendOpen] = useState(true);
-  const [isLoading, setIsLoading] = useState(() => !homeTreeDataCache);
+  const [isLoading, setIsLoading] = useState(() => !getCachedTreeData());
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -188,6 +189,7 @@ export function Home() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const familyTreeRef = useRef<FamilyTreeActions | null>(null);
+  const treeDataLoadTokenRef = useRef(0);
 
   const [edgeFilters, setEdgeFilters] = useState({
     conjugal: true,
@@ -241,88 +243,99 @@ export function Home() {
     storeDirectRelativeFilters(directRelativeFilterState.userId, directRelativeFilterState.filters);
   }, [user?.id, directRelativeFilterState]);
 
-  useEffect(() => {
-    if (homeTreeDataCache) {
-      setPessoas(homeTreeDataCache.pessoas);
-      setRelacionamentos(homeTreeDataCache.relacionamentos);
+  const loadTreeData = useCallback(async (options: { force?: boolean } = {}) => {
+    const loadToken = treeDataLoadTokenRef.current + 1;
+    treeDataLoadTokenRef.current = loadToken;
+    const cachedTreeData = getCachedTreeData();
+    if (!options.force && cachedTreeData) {
+      setPessoas(cachedTreeData.pessoas);
+      setRelacionamentos(cachedTreeData.relacionamentos);
       setIsLoading(false);
       setLoadError(null);
       return;
     }
 
-    let cancelled = false;
+    try {
+      setIsLoading(true);
+      setLoadError(null);
 
-    const loadData = async () => {
-      try {
-        setIsLoading(true);
-        setLoadError(null);
+      const [pessoasResult, relacionamentosResult] = await Promise.allSettled([
+        obterTodasPessoas(),
+        obterTodosRelacionamentos(),
+      ]);
 
-        const [pessoasResult, relacionamentosResult] = await Promise.allSettled([
-          obterTodasPessoas(),
-          obterTodosRelacionamentos(),
-        ]);
+      const pessoasData = pessoasResult.status === 'fulfilled' && Array.isArray(pessoasResult.value)
+        ? pessoasResult.value
+        : [];
+      const relacionamentosData = relacionamentosResult.status === 'fulfilled' && Array.isArray(relacionamentosResult.value)
+        ? relacionamentosResult.value
+        : [];
 
-        const pessoasData = pessoasResult.status === 'fulfilled' && Array.isArray(pessoasResult.value)
-          ? pessoasResult.value
-          : [];
-        const relacionamentosData = relacionamentosResult.status === 'fulfilled' && Array.isArray(relacionamentosResult.value)
-          ? relacionamentosResult.value
-          : [];
+      if (treeDataLoadTokenRef.current !== loadToken) return;
 
-        if (cancelled) return;
+      const errors = [
+        pessoasResult.status === 'rejected' ? pessoasResult.reason : null,
+        relacionamentosResult.status === 'rejected' ? relacionamentosResult.reason : null,
+      ].filter(Boolean);
 
-        const errors = [
-          pessoasResult.status === 'rejected' ? pessoasResult.reason : null,
-          relacionamentosResult.status === 'rejected' ? relacionamentosResult.reason : null,
-        ].filter(Boolean);
-
-        if (errors.length > 0) {
-          const message = errors
-            .map((error) => error instanceof Error ? error.message : 'Erro desconhecido ao carregar dados.')
-            .join('\n');
-          setLoadError(message);
-          return;
-        }
-
-        if (pessoasData.length === 0) {
-          setLoadError('Tabela sem dados: pessoas não retornou registros.');
-          return;
-        }
-
-        const nextPessoas = Array.isArray(pessoasData) ? pessoasData : [];
-        const nextRelacionamentos = Array.isArray(relacionamentosData) ? relacionamentosData : [];
-
-        homeTreeDataCache = {
-          pessoas: nextPessoas,
-          relacionamentos: nextRelacionamentos,
-        };
-
-        setPessoas(nextPessoas);
-        setRelacionamentos(nextRelacionamentos);
-
-        if (relacionamentosData.length === 0) {
-          console.warn('[Supabase] Tabela sem dados: relacionamentos não retornou registros.');
-        }
-      } catch (error) {
-        if (cancelled) return;
-        const message = error instanceof Error ? error.message : 'Erro desconhecido ao carregar dados.';
-        console.error('Erro ao carregar dados da árvore:', error);
+      if (errors.length > 0) {
+        const message = errors
+          .map((error) => error instanceof Error ? error.message : 'Erro desconhecido ao carregar dados.')
+          .join('\n');
         setLoadError(message);
-        setPessoas([]);
-        setRelacionamentos([]);
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        return;
       }
+
+      if (pessoasData.length === 0) {
+        setLoadError('Tabela sem dados: pessoas não retornou registros.');
+        return;
+      }
+
+      const nextPessoas = Array.isArray(pessoasData) ? pessoasData : [];
+      const nextRelacionamentos = Array.isArray(relacionamentosData) ? relacionamentosData : [];
+
+      setCachedTreeData({
+        pessoas: nextPessoas,
+        relacionamentos: nextRelacionamentos,
+      });
+
+      setPessoas(nextPessoas);
+      setRelacionamentos(nextRelacionamentos);
+
+      if (relacionamentosData.length === 0) {
+        console.warn('[Supabase] Tabela sem dados: relacionamentos não retornou registros.');
+      }
+    } catch (error) {
+      if (treeDataLoadTokenRef.current !== loadToken) return;
+      const message = error instanceof Error ? error.message : 'Erro desconhecido ao carregar dados.';
+      console.error('Erro ao carregar dados da árvore:', error);
+      setLoadError(message);
+      setPessoas([]);
+      setRelacionamentos([]);
+    } finally {
+      if (treeDataLoadTokenRef.current === loadToken) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const runLoad = (options?: { force?: boolean }) => {
+      if (!active) return;
+      void loadTreeData(options);
     };
 
-    loadData();
+    runLoad();
+    const unsubscribe = subscribeTreeDataChanged(() => runLoad({ force: true }));
 
     return () => {
-      cancelled = true;
+      active = false;
+      treeDataLoadTokenRef.current += 1;
+      unsubscribe();
     };
-  }, []);
+  }, [loadTreeData]);
 
   useEffect(() => {
     const loadLinkedPerson = async () => {

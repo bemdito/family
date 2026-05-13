@@ -2,6 +2,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 import { Pessoa } from '../types';
 import { buildActivityActorFromUser, createActivityLog } from './activityLogService';
+import { emitTreeDataChanged } from './treeDataCache';
 
 export interface MemberProfile {
   id: string;
@@ -510,6 +511,7 @@ export async function updateOwnLinkedPerson(pessoaId: string, payload: EditableO
 
   if (!error && data) {
     await registerOwnPersonUpdateActivity(pessoaId, payload, data as Pessoa);
+    emitTreeDataChanged();
   }
 
   return { error: error?.message, data: (data as Pessoa) ?? null };

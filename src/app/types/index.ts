@@ -65,6 +65,7 @@ export type ActivityLogAction =
   | 'person.photo_updated'
   | 'person.privacy_updated'
   | 'relationship.created'
+  | 'relationship.updated'
   | 'relationship.deleted'
   | 'historical_file.added'
   | 'historical_file.removed'
@@ -145,13 +146,13 @@ export interface Relacionamento {
   pessoa_origem_id: string;
   pessoa_destino_id: string;
   tipo_relacionamento: TipoRelacionamento;
-  subtipo_relacionamento?: SubtipoRelacionamento;
-  data_casamento?: string;
-  data_separacao?: string;
-  local_casamento?: string;
-  local_separacao?: string;
+  subtipo_relacionamento?: SubtipoRelacionamento | null;
+  data_casamento?: string | null;
+  data_separacao?: string | null;
+  local_casamento?: string | null;
+  local_separacao?: string | null;
   ativo: boolean;
-  observacoes?: string;
+  observacoes?: string | null;
 }
 
 export interface RegraParentesco {

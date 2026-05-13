@@ -57,6 +57,12 @@ export function RelacionamentoManager({
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const [parentGender, setParentGender] = useState<'pai' | 'mae'>('pai');
+  const [conjugalForm, setConjugalForm] = useState({
+    ativo: true,
+    data_separacao: '',
+    local_separacao: '',
+    observacoes: '',
+  });
 
   useEffect(() => {
     loadPessoas();
@@ -104,6 +110,10 @@ export function RelacionamentoManager({
         pessoa_destino_id: pessoaSelecionada.id,
         tipo_relacionamento: tipoSelecionado as TipoRelacionamento,
         subtipo_relacionamento: subtipoSelecionado,
+        ativo: tipoSelecionado === 'conjuge' ? conjugalForm.ativo : true,
+        data_separacao: tipoSelecionado === 'conjuge' ? conjugalForm.data_separacao || undefined : undefined,
+        local_separacao: tipoSelecionado === 'conjuge' ? conjugalForm.local_separacao.trim() || undefined : undefined,
+        observacoes: tipoSelecionado === 'conjuge' ? conjugalForm.observacoes.trim() || undefined : undefined,
       }, { inverseTipoForFilho: parentGender });
 
       if (!rel1) {
@@ -123,6 +133,12 @@ export function RelacionamentoManager({
 
       setShowAddDialog(false);
       setSearchTerm('');
+      setConjugalForm({
+        ativo: true,
+        data_separacao: '',
+        local_separacao: '',
+        observacoes: '',
+      });
       onChange?.();
     } catch (error) {
       console.error('Erro ao adicionar relacionamento:', error);
@@ -243,7 +259,19 @@ export function RelacionamentoManager({
                 </label>
                 <select
                   value={tipoSelecionado}
-                  onChange={(e) => setTipoSelecionado(e.target.value as TipoRelacionamentoOption)}
+                  onChange={(e) => {
+                    const nextTipo = e.target.value as TipoRelacionamentoOption;
+                    setTipoSelecionado(nextTipo);
+                    setSubtipoSelecionado(nextTipo === 'conjuge' ? 'casamento' : 'sangue');
+                    if (nextTipo !== 'conjuge') {
+                      setConjugalForm({
+                        ativo: true,
+                        data_separacao: '',
+                        local_separacao: '',
+                        observacoes: '',
+                      });
+                    }
+                  }}
                   className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
                 >
                   <option value="pai">Pai</option>
@@ -295,6 +323,59 @@ export function RelacionamentoManager({
                 <p className="text-xs text-gray-500 mt-1">
                   Selecione se {pessoaNome} é pai ou mãe desta pessoa
                 </p>
+              </div>
+            )}
+
+            {tipoSelecionado === 'conjuge' && (
+              <div className="grid grid-cols-1 gap-3 rounded-lg border border-blue-100 bg-white p-3 md:grid-cols-2">
+                <label className="flex items-center gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={conjugalForm.ativo}
+                    onChange={(event) =>
+                      setConjugalForm((current) => ({ ...current, ativo: event.target.checked }))
+                    }
+                    className="h-4 w-4"
+                  />
+                  Relacionamento ativo
+                </label>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Data de separação
+                  </label>
+                  <Input
+                    type="date"
+                    value={conjugalForm.data_separacao}
+                    onChange={(event) =>
+                      setConjugalForm((current) => ({ ...current, data_separacao: event.target.value }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Local de separação
+                  </label>
+                  <Input
+                    value={conjugalForm.local_separacao}
+                    onChange={(event) =>
+                      setConjugalForm((current) => ({ ...current, local_separacao: event.target.value }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Observações internas
+                  </label>
+                  <Input
+                    value={conjugalForm.observacoes}
+                    onChange={(event) =>
+                      setConjugalForm((current) => ({ ...current, observacoes: event.target.value }))
+                    }
+                  />
+                </div>
               </div>
             )}
 

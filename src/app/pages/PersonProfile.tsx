@@ -349,6 +349,7 @@ export function PersonProfile() {
           <ArquivosHistoricos
             arquivos={pessoa.arquivos_historicos}
             onChange={() => {}}
+            pessoaId={pessoa.id}
             readOnly={true}
           />
         )}

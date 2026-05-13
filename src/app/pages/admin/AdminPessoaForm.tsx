@@ -359,6 +359,7 @@ export function AdminPessoaForm() {
               <FotoUpload
                 value={formData.foto_principal_url}
                 onChange={(url) => handleChange('foto_principal_url', url)}
+                pessoaId={id}
               />
             </CardContent>
           </Card>
@@ -599,6 +600,7 @@ export function AdminPessoaForm() {
           <ArquivosHistoricos
             arquivos={formData.arquivos_historicos}
             onChange={(arquivos) => handleChange('arquivos_historicos', arquivos)}
+            pessoaId={id}
           />
 
           {!isEdit && (

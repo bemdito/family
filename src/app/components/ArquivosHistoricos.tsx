@@ -4,17 +4,19 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { ArquivoHistorico } from '../types';
-import { Upload, X, FileText, Image as ImageIcon, Eye } from 'lucide-react';
+import { Upload, X, FileText, Eye } from 'lucide-react';
+import { uploadHistoricalFile } from '../services/storageService';
 
 const ACCEPTED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
 interface ArquivosHistoricosProps {
   arquivos: ArquivoHistorico[];
   onChange: (arquivos: ArquivoHistorico[]) => void;
+  pessoaId?: string | null;
   readOnly?: boolean;
 }
 
-export function ArquivosHistoricos({ arquivos, onChange, readOnly = false }: ArquivosHistoricosProps) {
+export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = false }: ArquivosHistoricosProps) {
   const [novoArquivo, setNovoArquivo] = useState({
     titulo: '',
     descricao: '',
@@ -22,32 +24,34 @@ export function ArquivosHistoricos({ arquivos, onChange, readOnly = false }: Arq
     url: ''
   });
   const [isAddingFile, setIsAddingFile] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{ url: string; tipo: ArquivoHistorico['tipo'] } | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Verificar tipo de arquivo
     const isImage = ['image/jpeg', 'image/png', 'image/webp'].includes(file.type);
-    const isPdf = file.type === 'application/pdf';
     
     if (!ACCEPTED_FILE_TYPES.includes(file.type)) {
       alert('Apenas JPG, PNG, WebP e PDF são permitidos');
       return;
     }
 
-    // Simular upload - em produção, isso enviaria para um servidor/storage
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const url = reader.result as string;
+    setIsUploadingFile(true);
+    try {
+      const upload = await uploadHistoricalFile(file, { pessoaId });
       setNovoArquivo(prev => ({
         ...prev,
-        url,
+        url: upload.url,
         tipo: isImage ? 'imagem' : 'pdf'
       }));
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.');
+    } finally {
+      setIsUploadingFile(false);
+      e.target.value = '';
+    }
   };
 
   const handleAddArquivo = () => {
@@ -73,8 +77,8 @@ export function ArquivosHistoricos({ arquivos, onChange, readOnly = false }: Arq
     onChange(arquivos.filter(a => a.id !== id));
   };
 
-  const handleViewFile = (url: string) => {
-    setPreviewUrl(url);
+  const handleViewFile = (arquivo: ArquivoHistorico) => {
+    setPreviewFile({ url: arquivo.url, tipo: arquivo.tipo });
   };
 
   return (
@@ -107,11 +111,17 @@ export function ArquivosHistoricos({ arquivos, onChange, readOnly = false }: Arq
                   type="file"
                   accept="image/jpeg,image/png,image/webp,application/pdf"
                   onChange={handleFileChange}
+                  disabled={isUploadingFile}
                   className="cursor-pointer"
                 />
                 {novoArquivo.url && (
                   <p className="text-xs text-green-600 mt-1">
                     ✓ Arquivo carregado ({novoArquivo.tipo})
+                  </p>
+                )}
+                {isUploadingFile && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    Enviando arquivo para o Storage...
                   </p>
                 )}
               </div>
@@ -150,6 +160,7 @@ export function ArquivosHistoricos({ arquivos, onChange, readOnly = false }: Arq
                     setIsAddingFile(false);
                     setNovoArquivo({ titulo: '', descricao: '', tipo: 'imagem', url: '' });
                   }}
+                  disabled={isUploadingFile}
                 >
                   Cancelar
                 </Button>
@@ -157,6 +168,7 @@ export function ArquivosHistoricos({ arquivos, onChange, readOnly = false }: Arq
                   type="button"
                   size="sm"
                   onClick={handleAddArquivo}
+                  disabled={isUploadingFile}
                 >
                   Adicionar
                 </Button>
@@ -204,7 +216,7 @@ export function ArquivosHistoricos({ arquivos, onChange, readOnly = false }: Arq
                       <div className="flex gap-2 mt-2">
                         <button
                           type="button"
-                          onClick={() => handleViewFile(arquivo.url)}
+                          onClick={() => handleViewFile(arquivo)}
                           className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                         >
                           <Eye className="w-3 h-3" />
@@ -231,22 +243,22 @@ export function ArquivosHistoricos({ arquivos, onChange, readOnly = false }: Arq
       </Card>
 
       {/* Modal de visualização */}
-      <Dialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
+      <Dialog open={!!previewFile} onOpenChange={() => setPreviewFile(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
           <DialogHeader>
             <DialogTitle>Visualização do Arquivo</DialogTitle>
           </DialogHeader>
-          {previewUrl && (
+          {previewFile && (
             <div className="mt-4">
-              {previewUrl.startsWith('data:image') ? (
+              {previewFile.tipo === 'imagem' || previewFile.url.startsWith('data:image') ? (
                 <img 
-                  src={previewUrl} 
+                  src={previewFile.url}
                   alt="Visualização"
                   className="w-full h-auto rounded"
                 />
               ) : (
                 <iframe
-                  src={previewUrl}
+                  src={previewFile.url}
                   className="w-full h-[70vh] rounded border"
                   title="Visualização PDF"
                 />
