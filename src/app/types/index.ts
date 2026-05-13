@@ -64,6 +64,10 @@ export type ActivityLogAction =
   | 'person.updated'
   | 'person.photo_updated'
   | 'person.privacy_updated'
+  | 'relationship_change_requested'
+  | 'relationship_change_approved'
+  | 'relationship_change_rejected'
+  | 'relationship_change_cancelled'
   | 'relationship.created'
   | 'relationship.updated'
   | 'relationship.deleted'
@@ -79,6 +83,10 @@ export type ActivityLogEntityType =
   | 'historical_file'
   | 'notification_preferences'
   | 'first_access';
+
+export type RelationshipChangeRequestAction = 'create' | 'update' | 'delete';
+
+export type RelationshipChangeRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 export type ForumTopicoTipo = 'pergunta' | 'discussao' | 'aviso' | 'memoria' | 'ajuda';
 
@@ -153,6 +161,27 @@ export interface Relacionamento {
   local_separacao?: string | null;
   ativo: boolean;
   observacoes?: string | null;
+}
+
+export type RelationshipChangeRequestPayload = Record<string, unknown>;
+
+export interface RelationshipChangeRequest {
+  id: string;
+  requester_user_id: string;
+  requester_pessoa_id: string;
+  action: RelationshipChangeRequestAction;
+  status: RelationshipChangeRequestStatus;
+  target_pessoa_id?: string | null;
+  related_pessoa_id?: string | null;
+  relationship_id?: string | null;
+  relationship_type: TipoRelacionamento;
+  relationship_subtype?: SubtipoRelacionamento | null;
+  payload: RelationshipChangeRequestPayload;
+  admin_reviewed_by?: string | null;
+  admin_reviewed_at?: string | null;
+  admin_note?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface RegraParentesco {
