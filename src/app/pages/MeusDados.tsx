@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
 import { useNavigate } from 'react-router';
-import { Camera, ImagePlus, Info, Plus, Save, Trash2, UploadCloud, UserCircle2 } from 'lucide-react';
+import { Camera, ImagePlus, Info, Save, Trash2, UploadCloud, UserCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
+import {
+  SocialProfileForm,
+  SocialProfilesEditor,
+} from '../components/person/SocialProfilesEditor';
 import {
   Dialog,
   DialogContent,
@@ -53,7 +57,9 @@ import {
   normalizeBirthDate,
   normalizeLocation,
   PersonFieldErrors,
-  SOCIAL_NETWORKS,
+  buildSocialProfilesFromPerson,
+  createSocialProfile,
+  syncFirstSocialProfileToPersonFields,
   validateEditablePersonForm,
   validateLocation,
 } from '../utils/personFields';
@@ -61,13 +67,6 @@ import { getZodiacSignFromBirthDate } from '../utils/zodiac';
 
 const AVATAR_SIZE = 512;
 const LOCATION_FORMAT_HELPER = 'Use o formato Nome da Cidade/UF. Exemplo: São José dos Pinhais/PR.';
-
-const SOCIAL_PROFILE_PREFIXES: Record<string, string> = {
-  LinkedIn: 'linkedin.com/in/',
-  Facebook: 'facebook.com/',
-  Instagram: 'instagram.com/',
-  TikTok: 'tiktok.com/@',
-};
 
 type NotificationPreferenceKey =
   | 'receber_aniversarios'
@@ -146,16 +145,11 @@ const NOTIFICATION_OPTIONS: Array<{ key: NotificationPreferenceKey; label: strin
   },
 ];
 
-type SocialProfileForm = {
-  id: string;
-  rede: string;
-  perfil: string;
-};
-
 type MeusDadosDraft = {
   form: EditableOwnPersonPayload;
   complemento: string;
   socialProfiles: SocialProfileForm[];
+  archives: ArquivoHistorico[];
 };
 
 // Futuro banco: substituir campos rede_social/instagram_usuario por pessoa_social_profiles
@@ -171,14 +165,6 @@ function getAddressComponent(
 
 function joinAddressParts(parts: string[]) {
   return parts.map((part) => part.trim()).filter(Boolean).join(', ');
-}
-
-function createSocialProfile(rede = '', perfil = ''): SocialProfileForm {
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    rede,
-    perfil,
-  };
 }
 
 function getDraftKey(userId: string, pessoaId: string) {
@@ -197,6 +183,7 @@ function readMeusDadosDraft(key: string): MeusDadosDraft | null {
       form: draft.form,
       complemento: draft.complemento ?? '',
       socialProfiles: draft.socialProfiles.length > 0 ? draft.socialProfiles : [createSocialProfile()],
+      archives: Array.isArray(draft.archives) ? draft.archives : [],
     };
   } catch {
     return null;
@@ -335,13 +322,15 @@ export function MeusDados() {
       const nextPessoaId = data?.pessoa?.id ?? null;
       const samePessoa = nextPessoaId && initializedPessoaIdRef.current === nextPessoaId;
       const shouldPreserveDraft = hasInitializedFormRef.current && isDirtyRef.current && samePessoa;
+      const draftKey = user.id && nextPessoaId ? getDraftKey(user.id, nextPessoaId) : null;
+      const draft = draftKey && !shouldPreserveDraft ? readMeusDadosDraft(draftKey) : null;
 
       setLink(data);
 
       if (nextPessoaId) {
         try {
           const nextArchives = await listarArquivosHistoricosPorPessoa(nextPessoaId);
-          if (mounted) setArchives(nextArchives);
+          if (mounted && !shouldPreserveDraft) setArchives(draft?.archives ?? nextArchives);
         } catch (archivesError) {
           if (mounted) {
             toast.error(
@@ -351,21 +340,13 @@ export function MeusDados() {
             );
           }
         }
-      } else {
+      } else if (!shouldPreserveDraft) {
         setArchives([]);
       }
 
       if (!shouldPreserveDraft) {
-        const draftKey = user.id && nextPessoaId ? getDraftKey(user.id, nextPessoaId) : null;
-        const draft = draftKey ? readMeusDadosDraft(draftKey) : null;
-
         setForm(draft?.form ?? buildEditablePersonFormState(data?.pessoa));
-        setSocialProfiles(draft?.socialProfiles ?? [
-          createSocialProfile(
-            String(data?.pessoa?.rede_social ?? ''),
-            String(data?.pessoa?.instagram_usuario ?? ''),
-          ),
-        ]);
+        setSocialProfiles(draft?.socialProfiles ?? buildSocialProfilesFromPerson(data?.pessoa));
         setComplemento(draft?.complemento ?? '');
         isDirtyRef.current = Boolean(draft);
       }
@@ -489,8 +470,9 @@ export function MeusDados() {
       form,
       complemento,
       socialProfiles,
+      archives,
     });
-  }, [complemento, form, link?.pessoa?.id, socialProfiles, user?.id]);
+  }, [archives, complemento, form, link?.pessoa?.id, socialProfiles, user?.id]);
 
   const pessoa = link?.pessoa;
   const previewName = useMemo(() => {
@@ -541,14 +523,8 @@ export function MeusDados() {
   };
 
   const syncFirstSocialProfileToLegacyFields = (profiles: SocialProfileForm[]) => {
-    const firstProfile = profiles[0] ?? createSocialProfile();
-
     markFormDirty();
-    setForm((current) => ({
-      ...current,
-      rede_social: firstProfile.rede,
-      instagram_usuario: firstProfile.perfil,
-    }));
+    setForm((current) => syncFirstSocialProfileToPersonFields(current, profiles));
     setErrors((current) => ({
       ...current,
       rede_social: undefined,
@@ -556,28 +532,10 @@ export function MeusDados() {
     }));
   };
 
-  const updateSocialProfile = (profileId: string, field: 'rede' | 'perfil', value: string) => {
+  const handleSocialProfilesChange = (nextProfiles: SocialProfileForm[]) => {
     markFormDirty();
-    const nextProfiles = socialProfiles.map((profile) =>
-      profile.id === profileId ? { ...profile, [field]: value } : profile
-    );
-
     setSocialProfiles(nextProfiles);
     syncFirstSocialProfileToLegacyFields(nextProfiles);
-  };
-
-  const addSocialProfile = () => {
-    markFormDirty();
-    setSocialProfiles((current) => [...current, createSocialProfile()]);
-  };
-
-  const removeSocialProfile = (profileId: string) => {
-    markFormDirty();
-    const nextProfiles = socialProfiles.filter((profile) => profile.id !== profileId);
-    const ensuredProfiles = nextProfiles.length > 0 ? nextProfiles : [createSocialProfile()];
-
-    setSocialProfiles(ensuredProfiles);
-    syncFirstSocialProfileToLegacyFields(ensuredProfiles);
   };
 
   const updateNotificationPreference = (key: NotificationPreferenceKey, checked: boolean) => {
@@ -907,77 +865,14 @@ export function MeusDados() {
               {/* Campo visual até public.pessoas.complemento existir no schema e na tipagem. */}
             </Field>
             <div className="space-y-2 md:col-span-2">
-              <div className="flex items-center justify-between gap-3">
-                <Label>Redes sociais</Label>
-              </div>
-
-              <div className="space-y-3">
-                {socialProfiles.map((profile, index) => (
-                  <div key={profile.id} className="space-y-2">
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(180px,0.45fr)_minmax(0,1fr)] md:items-start">
-                      <select
-                        value={profile.rede}
-                        onChange={(event) => updateSocialProfile(profile.id, 'rede', event.target.value)}
-                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
-                        aria-invalid={index === 0 ? Boolean(errors.rede_social) : undefined}
-                      >
-                        <option value="">Selecione a plataforma</option>
-                        {SOCIAL_NETWORKS.map((network) => (
-                          <option key={network} value={network}>
-                            {network}
-                          </option>
-                        ))}
-                      </select>
-                      {profile.rede && (
-                        <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-                          <div className="flex min-w-0 flex-1">
-                            <span className="inline-flex h-10 shrink-0 items-center rounded-l-md border border-r-0 border-gray-300 bg-gray-50 px-3 text-sm text-gray-600">
-                              {SOCIAL_PROFILE_PREFIXES[profile.rede]}
-                            </span>
-                            <Input
-                              value={profile.perfil}
-                              onChange={(e) => updateSocialProfile(profile.id, 'perfil', e.target.value)}
-                              placeholder="identificador"
-                              className="rounded-l-none"
-                              aria-invalid={index === 0 ? Boolean(errors.instagram_usuario) : undefined}
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-10 w-10 shrink-0"
-                              onClick={addSocialProfile}
-                              aria-label="Adicionar rede social"
-                              title="Adicionar rede social"
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-10 w-10 shrink-0"
-                              onClick={() => removeSocialProfile(profile.id)}
-                              disabled={socialProfiles.length === 1}
-                              aria-label="Remover rede social"
-                              title="Remover rede social"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {index === 0 && (errors.rede_social || errors.instagram_usuario) && (
-                      <p className="text-xs font-medium text-red-600">
-                        {errors.rede_social || errors.instagram_usuario}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <SocialProfilesEditor
+                profiles={socialProfiles}
+                onChange={handleSocialProfilesChange}
+                errors={{
+                  rede_social: errors.rede_social,
+                  instagram_usuario: errors.instagram_usuario,
+                }}
+              />
             </div>
           </div>
 

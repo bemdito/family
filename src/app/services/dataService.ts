@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { limparCacheParentesco } from './relationshipCacheService';
 import { createActivityLog } from './activityLogService';
 import { emitTreeDataChanged } from './treeDataCache';
+import { includesNormalizedText } from '../utils/searchText';
 
 type SupabaseErrorLike = {
   message?: string;
@@ -761,12 +762,12 @@ export async function excluirRelacionamentoPorPayloadComInverso(
 export async function buscarPessoas(termo: string): Promise<Pessoa[]> {
   try {
     const pessoas = await obterTodasPessoas();
-    const termoLower = termo.toLowerCase();
 
     return pessoas.filter(p =>
-      p.nome_completo.toLowerCase().includes(termoLower) ||
-      p.local_nascimento?.toLowerCase().includes(termoLower) ||
-      p.local_atual?.toLowerCase().includes(termoLower)
+      includesNormalizedText(p.nome_completo, termo) ||
+      includesNormalizedText(p.local_nascimento, termo) ||
+      includesNormalizedText(p.local_atual, termo) ||
+      includesNormalizedText(p.local_falecimento, termo)
     );
   } catch (error) {
     console.error('Erro na busca de pessoas:', error);

@@ -26,6 +26,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { includesNormalizedText } from '../../utils/searchText';
 
 type AdvancedFilters = {
   status: Array<'vivos' | 'falecidos'>;
@@ -231,8 +232,11 @@ export function AdminPessoas() {
   const pessoasFiltradas = (Array.isArray(pessoas) ? pessoas : [])
     .filter(p => {
       // Filtro de busca
-      const matchSearch = p.nome_completo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.local_nascimento?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchSearch =
+        includesNormalizedText(p.nome_completo, searchTerm) ||
+        includesNormalizedText(p.local_nascimento, searchTerm) ||
+        includesNormalizedText(p.local_atual, searchTerm) ||
+        includesNormalizedText(p.local_falecimento, searchTerm);
       
       // Filtro de tipo
       const matchType = filter === 'todos' || 

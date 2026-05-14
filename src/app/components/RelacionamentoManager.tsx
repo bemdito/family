@@ -19,6 +19,7 @@ import {
   excluirRelacionamentoPorPayloadComInverso,
   obterTodasPessoas,
 } from '../services/dataService';
+import { includesNormalizedText } from '../utils/searchText';
 
 interface RelacionamentoManagerProps {
   pessoaId: string;
@@ -203,10 +204,7 @@ export function RelacionamentoManager({
     );
     if (jaRelacionadoMesmoTipo) return false;
 
-    if (searchTerm) {
-      return p.nome_completo.toLowerCase().includes(searchTerm.toLowerCase());
-    }
-    return true;
+    return includesNormalizedText(p.nome_completo, searchTerm);
   });
 
   const relacionamentosPorTipo = {

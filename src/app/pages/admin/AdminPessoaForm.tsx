@@ -1,8 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
 import {
   adicionarPessoa,
   atualizarPessoa,
@@ -25,18 +32,25 @@ import {
 import { ArrowLeft, Save, Plus, X, User, Search } from 'lucide-react';
 import { FotoUpload } from '../../components/FotoUpload';
 import { ArquivosHistoricos } from '../../components/ArquivosHistoricos';
+import {
+  SocialProfileForm,
+  SocialProfilesEditor,
+} from '../../components/person/SocialProfilesEditor';
 import { RelacionamentoManagerWrapper } from '../../components/RelacionamentoManagerWrapper';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import {
+  buildSocialProfilesFromPerson,
   cleanPersonPayload,
   formatPhone,
   getZodiacSignFromBirthDate,
   maskBirthDate,
   normalizeBirthDate,
   normalizeLocation,
+  syncFirstSocialProfileToPersonFields,
   validateEditablePersonForm,
 } from '../../utils/personFields';
+import { includesNormalizedText } from '../../utils/searchText';
 import { toast } from 'sonner';
 
 interface RelacionamentoPendente {
@@ -45,12 +59,8 @@ interface RelacionamentoPendente {
   subtipo: SubtipoRelacionamento;
 }
 
-export function AdminPessoaForm() {
-  const navigate = useNavigate();
-  const { id } = useParams<{ id: string }>();
-  const isEdit = !!id;
-
-  const [formData, setFormData] = useState({
+function createEmptyAdminPessoaFormData() {
+  return {
     nome_completo: '',
     data_nascimento: '',
     local_nascimento: '',
@@ -66,6 +76,8 @@ export function AdminPessoaForm() {
     telefone: '',
     endereco: '',
     rede_social: '',
+    instagram_usuario: '',
+    instagram_url: '',
     permitir_exibir_data_nascimento: true,
     permitir_exibir_endereco: true,
     permitir_exibir_rede_social: true,
@@ -73,27 +85,107 @@ export function AdminPessoaForm() {
     permitir_exibir_instagram: true,
     permitir_mensagens_whatsapp: true,
     arquivos_historicos: [] as ArquivoHistorico[],
-  });
+  };
+}
+
+type AdminPessoaFormData = ReturnType<typeof createEmptyAdminPessoaFormData>;
+
+type AdminPessoaDraft = {
+  formData: AdminPessoaFormData;
+  relacionamentosPendentes: RelacionamentoPendente[];
+  socialProfiles: SocialProfileForm[];
+  searchTerm: string;
+  tipoRelSelecionado: TipoRelacionamento;
+  subtipoRelSelecionado: SubtipoRelacionamento;
+};
+
+function getAdminPessoaDraftKey(isEdit: boolean, id?: string) {
+  return isEdit && id ? `admin-pessoa-form-draft:edit:${id}` : 'admin-pessoa-form-draft:new';
+}
+
+function readAdminPessoaDraft(key: string): AdminPessoaDraft | null {
+  try {
+    const rawDraft = window.sessionStorage.getItem(key);
+    if (!rawDraft) return null;
+
+    const draft = JSON.parse(rawDraft) as Partial<AdminPessoaDraft>;
+    if (!draft.formData) return null;
+
+    return {
+      formData: {
+        ...createEmptyAdminPessoaFormData(),
+        ...draft.formData,
+        arquivos_historicos: Array.isArray(draft.formData.arquivos_historicos)
+          ? draft.formData.arquivos_historicos
+          : [],
+      },
+      relacionamentosPendentes: Array.isArray(draft.relacionamentosPendentes)
+        ? draft.relacionamentosPendentes
+        : [],
+      socialProfiles: Array.isArray(draft.socialProfiles) && draft.socialProfiles.length > 0
+        ? draft.socialProfiles
+        : buildSocialProfilesFromPerson(draft.formData),
+      searchTerm: draft.searchTerm ?? '',
+      tipoRelSelecionado: draft.tipoRelSelecionado ?? 'pai',
+      subtipoRelSelecionado: draft.subtipoRelSelecionado ?? 'sangue',
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeAdminPessoaDraft(key: string, draft: AdminPessoaDraft) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(draft));
+  } catch {
+    // Rascunho é auxiliar; falha de storage não deve bloquear edição.
+  }
+}
+
+function removeAdminPessoaDraft(key: string) {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // noop
+  }
+}
+
+export function AdminPessoaForm() {
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
+
+  const [formData, setFormData] = useState<AdminPessoaFormData>(() => createEmptyAdminPessoaFormData());
 
   const [initialData, setInitialData] = useState<string>('');
   const [hasChanges, setHasChanges] = useState(false);
   const [relacionamentosPendentes, setRelacionamentosPendentes] = useState<RelacionamentoPendente[]>([]);
   const [showAddRelDialog, setShowAddRelDialog] = useState(false);
   const [todasPessoas, setTodasPessoas] = useState<Pessoa[]>([]);
+  const [socialProfiles, setSocialProfiles] = useState<SocialProfileForm[]>(() => buildSocialProfilesFromPerson());
   const [searchTerm, setSearchTerm] = useState('');
   const [tipoRelSelecionado, setTipoRelSelecionado] = useState<TipoRelacionamento>('pai');
   const [subtipoRelSelecionado, setSubtipoRelSelecionado] = useState<SubtipoRelacionamento>('sangue');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const draftKey = useMemo(() => getAdminPessoaDraftKey(isEdit, id), [id, isEdit]);
+  const hasInitializedDraftRef = useRef(false);
+  const hasUserEditedRef = useRef(false);
 
   const isFalecido = !!(formData.data_falecimento || formData.local_falecimento);
 
   useEffect(() => {
+    let mounted = true;
+
     const init = async () => {
+      hasInitializedDraftRef.current = false;
+      hasUserEditedRef.current = false;
+      const draft = readAdminPessoaDraft(draftKey);
+
       if (isEdit && id) {
         try {
           const pessoa = await obterPessoaPorId(id);
 
-          if (pessoa) {
+          if (pessoa && mounted) {
             const arquivosHistoricos = await listarArquivosHistoricosPorPessoa(id);
             const data = {
               nome_completo: pessoa.nome_completo || '',
@@ -111,6 +203,8 @@ export function AdminPessoaForm() {
               telefone: pessoa.telefone || '',
               endereco: pessoa.endereco || '',
               rede_social: pessoa.rede_social || '',
+              instagram_usuario: pessoa.instagram_usuario || '',
+              instagram_url: pessoa.instagram_url || '',
               permitir_exibir_data_nascimento: pessoa.permitir_exibir_data_nascimento ?? true,
               permitir_exibir_endereco: pessoa.permitir_exibir_endereco ?? true,
               permitir_exibir_rede_social: pessoa.permitir_exibir_rede_social ?? pessoa.permitir_exibir_instagram ?? true,
@@ -120,22 +214,46 @@ export function AdminPessoaForm() {
               arquivos_historicos: arquivosHistoricos,
             };
 
-            setFormData(data);
+            const nextFormData = draft?.formData ?? data;
+            if (draft || !hasUserEditedRef.current) {
+              setFormData(nextFormData);
+              setRelacionamentosPendentes(draft?.relacionamentosPendentes ?? []);
+              setSocialProfiles(draft?.socialProfiles ?? buildSocialProfilesFromPerson(pessoa));
+              setSearchTerm(draft?.searchTerm ?? '');
+              setTipoRelSelecionado(draft?.tipoRelSelecionado ?? 'pai');
+              setSubtipoRelSelecionado(draft?.subtipoRelSelecionado ?? 'sangue');
+            }
             setInitialData(JSON.stringify(data));
+            if (draft) hasUserEditedRef.current = true;
           }
         } catch (error) {
           console.error('Erro ao carregar pessoa:', error);
           toast.error('Erro ao carregar dados da pessoa');
         }
       } else {
-        setInitialData(JSON.stringify(formData));
+        const emptyData = createEmptyAdminPessoaFormData();
+        setFormData(draft?.formData ?? emptyData);
+        setRelacionamentosPendentes(draft?.relacionamentosPendentes ?? []);
+        setSocialProfiles(draft?.socialProfiles ?? buildSocialProfilesFromPerson());
+        setSearchTerm(draft?.searchTerm ?? '');
+        setTipoRelSelecionado(draft?.tipoRelSelecionado ?? 'pai');
+        setSubtipoRelSelecionado(draft?.subtipoRelSelecionado ?? 'sangue');
+        setInitialData(JSON.stringify(emptyData));
+        hasUserEditedRef.current = Boolean(draft);
         await loadTodasPessoas();
+      }
+
+      if (mounted) {
+        hasInitializedDraftRef.current = true;
       }
     };
 
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEdit, id]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [draftKey, isEdit, id]);
 
   const loadTodasPessoas = async () => {
     try {
@@ -152,8 +270,38 @@ export function AdminPessoaForm() {
     setHasChanges(currentData !== initialData || relacionamentosPendentes.length > 0);
   }, [formData, initialData, relacionamentosPendentes]);
 
+  useEffect(() => {
+    if (!hasInitializedDraftRef.current || !hasUserEditedRef.current) return;
+
+    writeAdminPessoaDraft(draftKey, {
+      formData,
+      relacionamentosPendentes,
+      socialProfiles,
+      searchTerm,
+      tipoRelSelecionado,
+      subtipoRelSelecionado,
+    });
+  }, [
+    draftKey,
+    formData,
+    relacionamentosPendentes,
+    socialProfiles,
+    searchTerm,
+    tipoRelSelecionado,
+    subtipoRelSelecionado,
+  ]);
+
   const shouldBlockNavigation = hasChanges && !isSubmitting;
   const { showPrompt, confirmNavigation, cancelNavigation } = useUnsavedChanges(shouldBlockNavigation);
+
+  const markDraftDirty = () => {
+    hasUserEditedRef.current = true;
+  };
+
+  const handleConfirmDiscardChanges = () => {
+    removeAdminPessoaDraft(draftKey);
+    confirmNavigation();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,6 +382,8 @@ export function AdminPessoaForm() {
 
       setInitialData(snapshotAtual);
       setRelacionamentosPendentes([]);
+      removeAdminPessoaDraft(draftKey);
+      hasUserEditedRef.current = false;
       setHasChanges(false);
       navigate('/admin/pessoas');
     } catch (error) {
@@ -245,10 +395,12 @@ export function AdminPessoaForm() {
   };
 
   const handleChange = (field: string, value: string | boolean | ArquivoHistorico[]) => {
+    markDraftDirty();
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleRedeSocialPrivacyChange = (checked: boolean) => {
+    markDraftDirty();
     setFormData((prev) => ({
       ...prev,
       permitir_exibir_rede_social: checked,
@@ -256,12 +408,24 @@ export function AdminPessoaForm() {
     }));
   };
 
+  const handleSocialProfilesChange = (nextProfiles: SocialProfileForm[]) => {
+    markDraftDirty();
+    setSocialProfiles(nextProfiles);
+    setFormData((prev) => syncFirstSocialProfileToPersonFields(prev, nextProfiles));
+  };
+
   const handleTelefoneChange = (value: string) => {
     const formatted = formatPhone(value);
     handleChange('telefone', formatted);
   };
 
+  const handleCloseRelacionamentoDialog = () => {
+    setShowAddRelDialog(false);
+    setSearchTerm('');
+  };
+
   const handleAdicionarRelacionamentoPendente = (pessoa: Pessoa) => {
+    markDraftDirty();
     const jaExiste = relacionamentosPendentes.some(
       (r) => r.pessoa.id === pessoa.id && r.tipo === tipoRelSelecionado
     );
@@ -288,12 +452,12 @@ export function AdminPessoaForm() {
       },
     ]);
 
-    setShowAddRelDialog(false);
-    setSearchTerm('');
+    handleCloseRelacionamentoDialog();
     toast.success(`${pessoa.nome_completo} adicionado(a) à lista`);
   };
 
   const handleRemoverRelacionamentoPendente = (pessoaId: string, tipo?: TipoRelacionamento) => {
+    markDraftDirty();
     setRelacionamentosPendentes((prev) =>
       prev.filter((r) => !(r.pessoa.id === pessoaId && (!tipo || r.tipo === tipo)))
     );
@@ -316,11 +480,7 @@ export function AdminPessoaForm() {
     );
     if (jaNaLista) return false;
 
-    if (searchTerm) {
-      return p.nome_completo.toLowerCase().includes(searchTerm.toLowerCase());
-    }
-
-    return true;
+    return includesNormalizedText(p.nome_completo, searchTerm);
   });
 
   const paiSelecionado = relacionamentosPendentes.find((r) => r.tipo === 'pai');
@@ -334,7 +494,7 @@ export function AdminPessoaForm() {
       <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/admin/pessoas')}>
+            <Button type="button" variant="ghost" size="icon" onClick={() => navigate('/admin/pessoas')}>
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <h1 className="font-bold text-xl text-gray-900">
@@ -533,17 +693,12 @@ export function AdminPessoaForm() {
                       maxLength={15}
                     />
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Rede Social / Site</label>
-                    <Input
-                      type="url"
-                      value={formData.rede_social}
-                      onChange={(e) => handleChange('rede_social', e.target.value)}
-                      placeholder="https://instagram.com/usuario"
-                    />
-                  </div>
                 </div>
+
+                <SocialProfilesEditor
+                  profiles={socialProfiles}
+                  onChange={handleSocialProfilesChange}
+                />
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Endereço</label>
@@ -650,6 +805,7 @@ export function AdminPessoaForm() {
                             variant="outline"
                             size="sm"
                             onClick={() => {
+                              markDraftDirty();
                               setTipoRelSelecionado('pai');
                               setSubtipoRelSelecionado('sangue');
                               setShowAddRelDialog(true);
@@ -696,6 +852,7 @@ export function AdminPessoaForm() {
                             variant="outline"
                             size="sm"
                             onClick={() => {
+                              markDraftDirty();
                               setTipoRelSelecionado('mae');
                               setSubtipoRelSelecionado('sangue');
                               setShowAddRelDialog(true);
@@ -718,6 +875,7 @@ export function AdminPessoaForm() {
                       type="button"
                       size="sm"
                       onClick={() => {
+                        markDraftDirty();
                         setTipoRelSelecionado('conjuge');
                         setSubtipoRelSelecionado('casamento');
                         setShowAddRelDialog(true);
@@ -771,112 +929,153 @@ export function AdminPessoaForm() {
             </Card>
           )}
 
-          {isEdit && id && <RelacionamentoManagerWrapper pessoaId={id} />}
+          {isEdit && id && (
+            <RelacionamentoManagerWrapper
+              pessoaId={id}
+              pessoaNome={formData.nome_completo || 'Pessoa'}
+            />
+          )}
         </form>
       </main>
 
       <ConfirmDialog
         open={showPrompt}
-        onConfirm={confirmNavigation}
-        onCancel={cancelNavigation}
+        onOpenChange={(open) => {
+          if (!open) cancelNavigation();
+        }}
+        onConfirm={handleConfirmDiscardChanges}
         title="Descartar alterações?"
         description="Você tem alterações não salvas. Se sair agora, elas serão perdidas."
       />
 
-      <ConfirmDialog
+      <Dialog
         open={showAddRelDialog}
-        onConfirm={() => {}}
-        onCancel={() => {
-          setShowAddRelDialog(false);
-          setSearchTerm('');
+        onOpenChange={(open) => {
+          if (open) {
+            setShowAddRelDialog(true);
+            return;
+          }
+
+          handleCloseRelacionamentoDialog();
         }}
-        title="Adicionar relacionamento"
-        description=""
-        hideButtons
       >
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Tipo</label>
-              <select
-                value={tipoRelSelecionado}
-                onChange={(e) => setTipoRelSelecionado(e.target.value as TipoRelacionamento)}
-                className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
-              >
-                <option value="conjuge">Cônjuge</option>
-                <option value="filho">Filho(a)</option>
-                <option value="irmao">Irmão(ã)</option>
-                <option value="pai">Pai</option>
-                <option value="mae">Mãe</option>
-              </select>
-            </div>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Adicionar relacionamento</DialogTitle>
+          </DialogHeader>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Subtipo</label>
-              <select
-                value={subtipoRelSelecionado}
-                onChange={(e) => setSubtipoRelSelecionado(e.target.value as SubtipoRelacionamento)}
-                className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
-              >
-                <option value="sangue">Sangue</option>
-                <option value="adotivo">Adotivo</option>
-                <option value="casamento">Casamento</option>
-                <option value="uniao">União</option>
-                <option value="separado">Separado</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Buscar pessoa</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Digite o nome da pessoa..."
-                className="pl-10"
-              />
-            </div>
-          </div>
-
-          <div className="max-h-80 overflow-y-auto border rounded-lg">
-            {pessoasFiltradas.length > 0 ? (
-              pessoasFiltradas.map((pessoa) => (
-                <button
-                  key={pessoa.id}
-                  type="button"
-                  onClick={() => handleAdicionarRelacionamentoPendente(pessoa)}
-                  className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 border-b last:border-b-0"
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo</label>
+                <select
+                  value={tipoRelSelecionado}
+                  onChange={(e) => {
+                    markDraftDirty();
+                    const nextTipo = e.target.value as TipoRelacionamento;
+                    setTipoRelSelecionado(nextTipo);
+                    setSubtipoRelSelecionado(nextTipo === 'conjuge' ? 'casamento' : 'sangue');
+                  }}
+                  className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
                 >
-                  {pessoa.foto_principal_url ? (
-                    <img
-                      src={pessoa.foto_principal_url}
-                      alt=""
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                      <User className="w-5 h-5 text-gray-400" />
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{pessoa.nome_completo}</p>
-                    {pessoa.local_nascimento && (
-                      <p className="text-xs text-gray-500 truncate">{pessoa.local_nascimento}</p>
-                    )}
-                  </div>
-                </button>
-              ))
-            ) : (
-              <div className="p-4 text-sm text-gray-500 text-center">
-                Nenhuma pessoa encontrada.
+                  <option value="conjuge">Cônjuge</option>
+                  <option value="filho">Filho(a)</option>
+                  <option value="irmao">Irmão(ã)</option>
+                  <option value="pai">Pai</option>
+                  <option value="mae">Mãe</option>
+                </select>
               </div>
-            )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Subtipo</label>
+                <select
+                  value={subtipoRelSelecionado}
+                  onChange={(e) => {
+                    markDraftDirty();
+                    setSubtipoRelSelecionado(e.target.value as SubtipoRelacionamento);
+                  }}
+                  className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                >
+                  {tipoRelSelecionado === 'conjuge' ? (
+                    <>
+                      <option value="casamento">Casamento</option>
+                      <option value="uniao">União</option>
+                      <option value="separado">Separado</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="sangue">Sangue</option>
+                      <option value="adotivo">Adotivo</option>
+                    </>
+                  )}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Buscar pessoa</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    markDraftDirty();
+                    setSearchTerm(e.target.value);
+                  }}
+                  placeholder="Digite o nome da pessoa..."
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            <div className="max-h-80 overflow-y-auto border rounded-lg">
+              {pessoasFiltradas.length > 0 ? (
+                pessoasFiltradas.map((pessoa) => (
+                  <button
+                    key={pessoa.id}
+                    type="button"
+                    onClick={() => handleAdicionarRelacionamentoPendente(pessoa)}
+                    className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 border-b last:border-b-0"
+                  >
+                    {pessoa.foto_principal_url ? (
+                      <img
+                        src={pessoa.foto_principal_url}
+                        alt=""
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                        <User className="w-5 h-5 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{pessoa.nome_completo}</p>
+                      {pessoa.local_nascimento && (
+                        <p className="text-xs text-gray-500 truncate">{pessoa.local_nascimento}</p>
+                      )}
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="p-4 text-sm text-gray-500 text-center">
+                  Nenhuma pessoa encontrada.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </ConfirmDialog>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCloseRelacionamentoDialog}
+            >
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

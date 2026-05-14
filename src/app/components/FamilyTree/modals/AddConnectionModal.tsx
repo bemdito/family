@@ -3,6 +3,7 @@ import { X, Link2, Search } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Pessoa } from '../../../types';
+import { includesNormalizedText, normalizeSearchText } from '../../../utils/searchText';
 
 export type AddConnectionType = 'conjuge' | 'pai' | 'mae' | 'filho' | 'irmao';
 
@@ -73,7 +74,7 @@ export function AddConnectionModal({
 
   const filteredPeople = React.useMemo(() => {
     const sourceId = sourcePerson?.id;
-    const normalizedSearch = search.trim().toLowerCase();
+    const normalizedSearch = normalizeSearchText(search);
 
     return pessoas
       .filter((pessoa) => pessoa.id !== sourceId)
@@ -81,9 +82,10 @@ export function AddConnectionModal({
         if (!normalizedSearch) return true;
 
         return (
-          pessoa.nome_completo?.toLowerCase().includes(normalizedSearch) ||
-          pessoa.local_nascimento?.toLowerCase().includes(normalizedSearch) ||
-          pessoa.local_atual?.toLowerCase().includes(normalizedSearch)
+          includesNormalizedText(pessoa.nome_completo, normalizedSearch) ||
+          includesNormalizedText(pessoa.local_nascimento, normalizedSearch) ||
+          includesNormalizedText(pessoa.local_atual, normalizedSearch) ||
+          includesNormalizedText(pessoa.local_falecimento, normalizedSearch)
         );
       })
       .slice(0, 30);

@@ -6,6 +6,12 @@ export { getZodiacSignFromBirthDate };
 
 export const SOCIAL_NETWORKS = ['LinkedIn', 'Facebook', 'Instagram', 'TikTok'] as const;
 
+export type SocialProfileForm = {
+  id: string;
+  rede: string;
+  perfil: string;
+};
+
 export const LOWERCASE_NAME_PARTS = new Set(['de', 'da', 'das', 'do', 'dos', 'e']);
 
 export const PERSON_FIELD_LABELS = {
@@ -49,6 +55,7 @@ export const EDITABLE_OWN_PERSON_FIELDS: Array<keyof EditableOwnPersonPayload> =
   'endereco',
   'rede_social',
   'instagram_usuario',
+  'instagram_url',
   'permitir_exibir_instagram',
   'permitir_mensagens_whatsapp',
   'permitir_exibir_data_nascimento',
@@ -198,6 +205,36 @@ export function getSocialPlaceholder(network?: string) {
   if (network === 'Instagram' || network === 'TikTok') return '@usuario';
   if (network === 'Facebook' || network === 'LinkedIn') return 'nome-do-perfil ou URL';
   return 'Selecione uma rede primeiro';
+}
+
+export function createSocialProfile(rede = '', perfil = ''): SocialProfileForm {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    rede,
+    perfil,
+  };
+}
+
+export function buildSocialProfilesFromPerson(pessoa?: Pick<Pessoa, 'rede_social' | 'instagram_usuario'> | null) {
+  return [
+    createSocialProfile(
+      String(pessoa?.rede_social ?? ''),
+      String(pessoa?.instagram_usuario ?? ''),
+    ),
+  ];
+}
+
+export function syncFirstSocialProfileToPersonFields<T extends { rede_social?: string; instagram_usuario?: string }>(
+  form: T,
+  profiles: SocialProfileForm[],
+): T {
+  const firstProfile = profiles[0] ?? createSocialProfile();
+
+  return {
+    ...form,
+    rede_social: firstProfile.rede,
+    instagram_usuario: firstProfile.perfil,
+  };
 }
 
 export function cleanPersonPayload(form: EditableOwnPersonPayload): EditableOwnPersonPayload {

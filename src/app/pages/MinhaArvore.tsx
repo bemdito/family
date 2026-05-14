@@ -89,6 +89,7 @@ import {
   validateEditablePersonForm,
   validateLocation,
 } from '../utils/personFields';
+import { includesNormalizedText, normalizeSearchText } from '../utils/searchText';
 import { getZodiacSignFromBirthDate } from '../utils/zodiac';
 import { toast } from 'sonner';
 
@@ -550,7 +551,7 @@ export function MinhaArvore() {
 
   const selectedGroupPeople = addRelativeDialog ? relationshipGroups[addRelativeDialog.group] : [];
   const existingRelativeCandidates = useMemo(() => {
-    const search = addRelativeForm.search.trim().toLocaleLowerCase('pt-BR');
+    const search = normalizeSearchText(addRelativeForm.search);
     const blockedIds = new Set([
       pessoaBase?.id,
       ...selectedGroupPeople.map((person) => person.id),
@@ -560,7 +561,10 @@ export function MinhaArvore() {
       .filter((person) => !blockedIds.has(person.id))
       .filter((person) => {
         if (!search) return true;
-        return `${person.nome_completo} ${person.local_nascimento ?? ''}`.toLocaleLowerCase('pt-BR').includes(search);
+        return includesNormalizedText(
+          `${person.nome_completo} ${person.local_nascimento ?? ''} ${person.local_atual ?? ''}`,
+          search,
+        );
       })
       .slice(0, 12);
   }, [addRelativeForm.search, pessoaBase?.id, pessoas, selectedGroupPeople]);

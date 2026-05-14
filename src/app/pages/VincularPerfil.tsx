@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button';
 import { useAuth } from '../contexts/AuthContext';
 import { ensureMemberProfile, linkUserToPerson, listLinkablePeople } from '../services/memberProfileService';
 import { Pessoa } from '../types';
+import { includesNormalizedText } from '../utils/searchText';
 import { toast } from 'sonner';
 
 const RELACOES_SUGERIDAS = [
@@ -48,12 +49,12 @@ export function VincularPerfil() {
   }, [user]);
 
   const pessoasFiltradas = useMemo(() => {
-    const termo = search.trim().toLowerCase();
-    if (!termo) return pessoas;
     return pessoas.filter((pessoa) => {
-      const nome = pessoa.nome_completo.toLowerCase();
-      const local = String(pessoa.local_nascimento ?? '').toLowerCase();
-      return nome.includes(termo) || local.includes(termo);
+      return (
+        includesNormalizedText(pessoa.nome_completo, search) ||
+        includesNormalizedText(pessoa.local_nascimento, search) ||
+        includesNormalizedText(pessoa.local_atual, search)
+      );
     });
   }, [pessoas, search]);
 

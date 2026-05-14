@@ -327,7 +327,9 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, relacionament
       </Card>
 
       {/* Modal de visualização */}
-      <Dialog open={!!previewFile} onOpenChange={() => setPreviewFile(null)}>
+      <Dialog open={!!previewFile} onOpenChange={(open) => {
+        if (!open) setPreviewFile(null);
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
           <DialogHeader>
             <DialogTitle>Visualização do Arquivo</DialogTitle>

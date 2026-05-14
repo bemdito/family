@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Heart, Plus, Save, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
@@ -58,6 +58,14 @@ type AddDialogState = {
 
 type MarriageDetails = Record<string, { data_casamento: string; local_casamento: string }>;
 
+type MeusVinculosDraft = {
+  relationships: RelationshipGroups;
+  marriageDetails: MarriageDetails;
+  localRelationshipRoles: Record<string, 'pai' | 'mae'>;
+  archives: ArquivoHistorico[];
+  hasLocalRelationshipChanges: boolean;
+};
+
 const EMPTY_GROUPS: RelationshipGroups = {
   pais: [],
   maes: [],
@@ -94,6 +102,52 @@ function findRelationshipBetween(
     acceptedTypes.includes(rel.tipo_relacionamento) &&
     (matchesRelationshipPair(rel, baseId, relatedId) || matchesRelationshipPair(rel, relatedId, baseId))
   ));
+}
+
+function getMeusVinculosDraftKey(userId: string, pessoaId: string) {
+  return `meus-vinculos-draft:${userId}:${pessoaId}`;
+}
+
+function readMeusVinculosDraft(key: string): MeusVinculosDraft | null {
+  try {
+    const rawDraft = window.sessionStorage.getItem(key);
+    if (!rawDraft) return null;
+
+    const draft = JSON.parse(rawDraft) as Partial<MeusVinculosDraft>;
+    if (!draft.relationships) return null;
+
+    return {
+      relationships: {
+        pais: Array.isArray(draft.relationships.pais) ? draft.relationships.pais : [],
+        maes: Array.isArray(draft.relationships.maes) ? draft.relationships.maes : [],
+        conjuges: Array.isArray(draft.relationships.conjuges) ? draft.relationships.conjuges : [],
+        filhos: Array.isArray(draft.relationships.filhos) ? draft.relationships.filhos : [],
+        irmaos: Array.isArray(draft.relationships.irmaos) ? draft.relationships.irmaos : [],
+      },
+      marriageDetails: draft.marriageDetails ?? {},
+      localRelationshipRoles: draft.localRelationshipRoles ?? {},
+      archives: Array.isArray(draft.archives) ? draft.archives : [],
+      hasLocalRelationshipChanges: Boolean(draft.hasLocalRelationshipChanges),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeMeusVinculosDraft(key: string, draft: MeusVinculosDraft) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(draft));
+  } catch {
+    // Rascunho é auxiliar; falha de storage não deve bloquear edição.
+  }
+}
+
+function removeMeusVinculosDraft(key: string) {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // noop
+  }
 }
 
 function RelationSection({
@@ -171,6 +225,8 @@ export function MeusVinculos() {
   const [archives, setArchives] = useState<ArquivoHistorico[]>([]);
   const [loading, setLoading] = useState(true);
   const [finishing, setFinishing] = useState(false);
+  const draftHydratedRef = useRef(false);
+  const draftDirtyRef = useRef(false);
 
   const pessoa = link?.pessoa;
 
@@ -179,21 +235,26 @@ export function MeusVinculos() {
       obterRelacionamentosDaPessoa(pessoaId),
       obterTodosRelacionamentos(),
     ]);
+    const nextMarriageDetails: MarriageDetails = {};
+    uniquePeople(nextRelationships.conjuges).forEach((person) => {
+      const rel = findRelationshipBetween(nextAllRelationships, pessoaId, person.id, ['conjuge']);
+      nextMarriageDetails[person.id] = {
+        data_casamento: String(rel?.data_casamento ?? ''),
+        local_casamento: String(rel?.local_casamento ?? ''),
+      };
+    });
+
     setAllRelacionamentos(nextAllRelationships);
     setRelationships(nextRelationships);
     setInitialRelationships(nextRelationships);
-    setMarriageDetails(() => {
-      const next: MarriageDetails = {};
-      uniquePeople(nextRelationships.conjuges).forEach((person) => {
-        const rel = findRelationshipBetween(nextAllRelationships, pessoaId, person.id, ['conjuge']);
-        next[person.id] = {
-          data_casamento: String(rel?.data_casamento ?? ''),
-          local_casamento: String(rel?.local_casamento ?? ''),
-        };
-      });
-      setInitialMarriageDetails(next);
-      return next;
-    });
+    setMarriageDetails(nextMarriageDetails);
+    setInitialMarriageDetails(nextMarriageDetails);
+
+    return {
+      relationships: nextRelationships,
+      allRelacionamentos: nextAllRelationships,
+      marriageDetails: nextMarriageDetails,
+    };
   }
 
   useEffect(() => {
@@ -203,6 +264,8 @@ export function MeusVinculos() {
       if (!user) return;
 
       setLoading(true);
+      draftHydratedRef.current = false;
+      draftDirtyRef.current = false;
       await resolveFirstAccessLinkForUser(user);
       const { data, error } = await getPrimaryLinkedPersonWithPessoa(user.id);
 
@@ -217,12 +280,26 @@ export function MeusVinculos() {
       setLink(data);
 
       if (data?.pessoa?.id) {
+        const draftKey = getMeusVinculosDraftKey(user.id, data.pessoa.id);
+        const draft = readMeusVinculosDraft(draftKey);
         const nextArchives = await listarArquivosHistoricosPorPessoa(data.pessoa.id);
         if (mounted) setArchives(nextArchives);
         await reloadRelationships(data.pessoa.id);
+
+        if (mounted && draft) {
+          setRelationships(draft.relationships);
+          setMarriageDetails(draft.marriageDetails);
+          setLocalRelationshipRoles(draft.localRelationshipRoles);
+          setArchives(draft.archives);
+          setHasLocalRelationshipChanges(draft.hasLocalRelationshipChanges);
+          draftDirtyRef.current = true;
+        }
       }
 
-      if (mounted) setLoading(false);
+      if (mounted) {
+        draftHydratedRef.current = true;
+        setLoading(false);
+      }
     }
 
     loadData();
@@ -231,6 +308,30 @@ export function MeusVinculos() {
       mounted = false;
     };
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.id || !pessoa?.id || !draftHydratedRef.current || !draftDirtyRef.current) return;
+
+    writeMeusVinculosDraft(getMeusVinculosDraftKey(user.id, pessoa.id), {
+      relationships,
+      marriageDetails,
+      localRelationshipRoles,
+      archives,
+      hasLocalRelationshipChanges,
+    });
+  }, [
+    archives,
+    hasLocalRelationshipChanges,
+    localRelationshipRoles,
+    marriageDetails,
+    pessoa?.id,
+    relationships,
+    user?.id,
+  ]);
+
+  const markDraftDirty = () => {
+    draftDirtyRef.current = true;
+  };
 
   const openAddDialog = (group: RelationshipGroupKey, title: string) => {
     setAddDialog({ group, title });
@@ -249,6 +350,7 @@ export function MeusVinculos() {
       return;
     }
 
+    markDraftDirty();
     const person = createLocalPerson(addForm);
 
     setRelationships((current) => {
@@ -282,6 +384,7 @@ export function MeusVinculos() {
 
   const removeRelative = (group: RelationshipGroupKey, personId: string) => {
     // TODO: persistir remoção de vínculo em Supabase quando a revisão de relacionamentos for definitiva.
+    markDraftDirty();
     if (group === 'pais') {
       setRelationships((current) => ({
         ...current,
@@ -311,6 +414,7 @@ export function MeusVinculos() {
     field: 'data_casamento' | 'local_casamento',
     value: string,
   ) => {
+    markDraftDirty();
     setMarriageDetails((current) => ({
       ...current,
       [spouseId]: {
@@ -320,6 +424,11 @@ export function MeusVinculos() {
       },
     }));
     setHasLocalRelationshipChanges(true);
+  };
+
+  const handleArchivesChange = (nextArchives: ArquivoHistorico[]) => {
+    markDraftDirty();
+    setArchives(nextArchives);
   };
 
   const getGroupPeople = (groups: RelationshipGroups, group: RelationshipGroupKey) => {
@@ -488,6 +597,11 @@ export function MeusVinculos() {
 
     setFinishing(false);
 
+    if (user?.id && pessoa.id) {
+      removeMeusVinculosDraft(getMeusVinculosDraftKey(user.id, pessoa.id));
+    }
+    draftDirtyRef.current = false;
+
     if (requestSummary.created > 0) {
       const duplicateText = requestSummary.skipped > 0
         ? ` ${requestSummary.skipped} solicitação já estava pendente.`
@@ -607,7 +721,7 @@ export function MeusVinculos() {
           </Card>
 
           <div>
-            <ArquivosHistoricos arquivos={archives} onChange={setArchives} pessoaId={pessoa.id} />
+            <ArquivosHistoricos arquivos={archives} onChange={handleArchivesChange} pessoaId={pessoa.id} />
           </div>
         </div>
 
