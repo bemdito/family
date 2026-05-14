@@ -64,6 +64,9 @@ export type ActivityLogAction =
   | 'person.updated'
   | 'person.photo_updated'
   | 'person.privacy_updated'
+  | 'person_event.added'
+  | 'person_event.updated'
+  | 'person_event.removed'
   | 'relationship_change_requested'
   | 'relationship_change_approved'
   | 'relationship_change_rejected'
@@ -79,6 +82,7 @@ export type ActivityLogAction =
 
 export type ActivityLogEntityType =
   | 'person'
+  | 'person_event'
   | 'relationship'
   | 'historical_file'
   | 'notification_preferences'
@@ -108,6 +112,31 @@ export interface ArquivoHistorico {
   descricao?: string;
   ano?: string;
   ordem?: number;
+}
+
+export type PersonEventType =
+  | 'imigracao'
+  | 'chegada_brasil'
+  | 'mudanca'
+  | 'batismo'
+  | 'formatura'
+  | 'profissao'
+  | 'militar'
+  | 'religioso'
+  | 'memoria'
+  | 'outro';
+
+export interface PersonEvent {
+  id: string;
+  pessoa_id: string;
+  tipo: PersonEventType;
+  titulo: string;
+  data_evento?: string | null;
+  local?: string | null;
+  descricao?: string | null;
+  ordem?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Pessoa {

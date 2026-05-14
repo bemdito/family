@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router';
 import { Heart, Plus, Save, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
+import {
+  createEmptyMarriageDetails,
+  MarriageDetailsEditor,
+  MarriageDetailsForm,
+  normalizeMarriageDetails,
+} from '../components/relationships/MarriageDetailsEditor';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import {
@@ -58,7 +64,7 @@ type AddDialogState = {
   title: string;
 } | null;
 
-type MarriageDetails = Record<string, { data_casamento: string; local_casamento: string }>;
+type MarriageDetails = Record<string, MarriageDetailsForm>;
 
 type MeusVinculosDraft = {
   relationships: RelationshipGroups;
@@ -129,7 +135,9 @@ function readMeusVinculosDraft(key: string): MeusVinculosDraft | null {
         filhos: Array.isArray(draft.relationships.filhos) ? draft.relationships.filhos : [],
         irmaos: Array.isArray(draft.relationships.irmaos) ? draft.relationships.irmaos : [],
       },
-      marriageDetails: draft.marriageDetails ?? {},
+      marriageDetails: Object.fromEntries(
+        Object.entries(draft.marriageDetails ?? {}).map(([key, value]) => [key, normalizeMarriageDetails(value)])
+      ),
       localRelationshipRoles: draft.localRelationshipRoles ?? {},
       archives: Array.isArray(draft.archives) ? draft.archives : [],
       hasLocalRelationshipChanges: Boolean(draft.hasLocalRelationshipChanges),
@@ -245,8 +253,12 @@ export function MeusVinculos() {
     uniquePeople(nextRelationships.conjuges).forEach((person) => {
       const rel = findRelationshipBetween(nextAllRelationships, pessoaId, person.id, ['conjuge']);
       nextMarriageDetails[person.id] = {
+        ...createEmptyMarriageDetails(),
         data_casamento: String(rel?.data_casamento ?? ''),
         local_casamento: String(rel?.local_casamento ?? ''),
+        ativo: rel?.ativo ?? true,
+        data_separacao: String(rel?.data_separacao ?? ''),
+        local_separacao: String(rel?.local_separacao ?? ''),
       };
     });
 
@@ -399,7 +411,7 @@ export function MeusVinculos() {
     if (addDialog.group === 'conjuges') {
       setMarriageDetails((current) => ({
         ...current,
-        [person.id]: { data_casamento: '', local_casamento: '' },
+        [person.id]: createEmptyMarriageDetails(),
       }));
     }
 
@@ -434,19 +446,11 @@ export function MeusVinculos() {
     setHasLocalRelationshipChanges(true);
   };
 
-  const updateMarriageDetail = (
-    spouseId: string,
-    field: 'data_casamento' | 'local_casamento',
-    value: string,
-  ) => {
+  const updateMarriageDetail = (spouseId: string, details: MarriageDetailsForm) => {
     markDraftDirty();
     setMarriageDetails((current) => ({
       ...current,
-      [spouseId]: {
-        data_casamento: current[spouseId]?.data_casamento ?? '',
-        local_casamento: current[spouseId]?.local_casamento ?? '',
-        [field]: value,
-      },
+      [spouseId]: normalizeMarriageDetails(details),
     }));
     setHasLocalRelationshipChanges(true);
   };
@@ -483,7 +487,9 @@ export function MeusVinculos() {
       ? {
           data_casamento: marriageDetails[person.id]?.data_casamento || null,
           local_casamento: marriageDetails[person.id]?.local_casamento || null,
-          ativo: true,
+          ativo: marriageDetails[person.id]?.ativo ?? true,
+          data_separacao: marriageDetails[person.id]?.data_separacao || null,
+          local_separacao: marriageDetails[person.id]?.local_separacao || null,
         }
       : { ativo: true };
 
@@ -564,12 +570,9 @@ export function MeusVinculos() {
     for (const spouse of getGroupPeople(relationships, 'conjuges')) {
       if (!getGroupPeople(initialRelationships, 'conjuges').some((person) => person.id === spouse.id)) continue;
 
-      const initialDetails = initialMarriageDetails[spouse.id] ?? { data_casamento: '', local_casamento: '' };
-      const currentDetails = marriageDetails[spouse.id] ?? { data_casamento: '', local_casamento: '' };
-      if (
-        initialDetails.data_casamento === currentDetails.data_casamento &&
-        initialDetails.local_casamento === currentDetails.local_casamento
-      ) {
+      const initialDetails = normalizeMarriageDetails(initialMarriageDetails[spouse.id]);
+      const currentDetails = normalizeMarriageDetails(marriageDetails[spouse.id]);
+      if (JSON.stringify(initialDetails) === JSON.stringify(currentDetails)) {
         continue;
       }
 
@@ -579,6 +582,9 @@ export function MeusVinculos() {
       const wasCreated = await createPendingRelationshipRequest(getRelationshipInputForGroup('update', 'conjuges', spouse, rel.id, {
         data_casamento: currentDetails.data_casamento,
         local_casamento: currentDetails.local_casamento,
+        ativo: currentDetails.ativo,
+        data_separacao: currentDetails.data_separacao,
+        local_separacao: currentDetails.local_separacao,
       }, rel));
       if (wasCreated) created += 1;
       else skipped += 1;
@@ -713,25 +719,13 @@ export function MeusVinculos() {
                 onRemove={(personId) => removeRelative('conjuges', personId)}
               >
                 {(person) => (
-                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-gray-600">Data de casamento</Label>
-                      <Input
-                        value={marriageDetails[person.id]?.data_casamento ?? ''}
-                        onChange={(event) => updateMarriageDetail(person.id, 'data_casamento', event.target.value)}
-                        placeholder="DD/MM/AAAA ou AAAA"
-                        className="bg-white"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-gray-600">Local de casamento</Label>
-                      <Input
-                        value={marriageDetails[person.id]?.local_casamento ?? ''}
-                        onChange={(event) => updateMarriageDetail(person.id, 'local_casamento', event.target.value)}
-                        placeholder="Cidade/UF"
-                        className="bg-white"
-                      />
-                    </div>
+                  <div className="mt-3">
+                    <MarriageDetailsEditor
+                      value={marriageDetails[person.id] ?? createEmptyMarriageDetails()}
+                      onChange={(details) => updateMarriageDetail(person.id, details)}
+                      isAdmin={false}
+                      allowHistoricalFiles={false}
+                    />
                   </div>
                 )}
               </RelationSection>

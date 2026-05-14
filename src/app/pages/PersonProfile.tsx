@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { obterPessoaPorId, obterRelacionamentosDaPessoa, obterTodasPessoas } from '../services/dataService';
 import { listarArquivosHistoricosPorPessoa } from '../services/arquivosHistoricosService';
+import { listarEventosDaPessoa } from '../services/personEventsService';
 import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
 import { alternarFavorito, conteudoEstaFavoritado } from '../services/userEngagementService';
 import { listarTopicosForum } from '../services/forumService';
-import { ForumTopico, Pessoa } from '../types';
+import { ForumTopico, Pessoa, PersonEvent } from '../types';
 import { 
   ArrowLeft, 
   Star, 
@@ -20,6 +21,7 @@ import { toast } from 'sonner';
 import { PersonDataView } from '../components/person/PersonDataView';
 import { PersonRelationshipsView } from '../components/person/PersonRelationshipsView';
 import { RelationshipFinder } from '../components/person/RelationshipFinder';
+import { PersonEventsList } from '../components/person/PersonEventsList';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditPerson, getLinkedPessoaIdForUser, isAdminUser } from '../services/permissionService';
 import { ForumEmptyState } from '../components/forum/ForumEmptyState';
@@ -49,6 +51,7 @@ export function PersonProfile() {
   const [loading, setLoading] = useState(true);
   const [relationshipsLoading, setRelationshipsLoading] = useState(false);
   const [forumTopicos, setForumTopicos] = useState<ForumTopico[]>([]);
+  const [personEvents, setPersonEvents] = useState<PersonEvent[]>([]);
   const [forumLoading, setForumLoading] = useState(false);
   const [favoritado, setFavoritado] = useState(false);
   const [linkedPessoaId, setLinkedPessoaId] = useState<string | null>(null);
@@ -75,16 +78,21 @@ export function PersonProfile() {
 
       setLoading(true);
       setPessoa(undefined);
+      setPersonEvents([]);
       setRelacionamentos(EMPTY_RELATIONSHIPS);
       setRelationshipsLoading(false);
       const pessoaData = await obterPessoaPorId(id);
-      const arquivosHistoricos = pessoaData
-        ? await listarArquivosHistoricosPorPessoa(pessoaData.id)
-        : [];
+      const [arquivosHistoricos, eventosDaPessoa] = pessoaData
+        ? await Promise.all([
+          listarArquivosHistoricosPorPessoa(pessoaData.id),
+          listarEventosDaPessoa(pessoaData.id),
+        ])
+        : [[], []];
 
       if (!mounted) return;
 
       setPessoa(pessoaData ? { ...pessoaData, arquivos_historicos: arquivosHistoricos } : undefined);
+      setPersonEvents(eventosDaPessoa);
       setFavoritado(conteudoEstaFavoritado('pessoa', id));
       setLoading(false);
     }
@@ -284,6 +292,8 @@ export function PersonProfile() {
           pessoaBase={pessoa}
           pessoas={allPeople.length > 0 ? allPeople : [pessoa]}
         />
+
+        <PersonEventsList eventos={personEvents} />
 
           {user && (
             <section>

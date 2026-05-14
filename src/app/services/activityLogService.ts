@@ -19,6 +19,9 @@ export const ACTIVITY_ACTION_LABELS: Record<ActivityLogAction, string> = {
   'person.updated': 'Pessoa atualizada',
   'person.photo_updated': 'Foto atualizada',
   'person.privacy_updated': 'Privacidade atualizada',
+  'person_event.added': 'Evento da pessoa adicionado',
+  'person_event.updated': 'Evento da pessoa atualizado',
+  'person_event.removed': 'Evento da pessoa removido',
   'relationship_change_requested': 'Solicitação de vínculo criada',
   'relationship_change_approved': 'Solicitação de vínculo aprovada',
   'relationship_change_rejected': 'Solicitação de vínculo rejeitada',
@@ -35,6 +38,7 @@ export const ACTIVITY_ACTION_LABELS: Record<ActivityLogAction, string> = {
 
 export const ACTIVITY_ENTITY_LABELS: Record<ActivityLogEntityType, string> = {
   person: 'Pessoa',
+  person_event: 'Evento da pessoa',
   relationship: 'Relacionamento',
   historical_file: 'Arquivo histórico',
   notification_preferences: 'Notificações',
@@ -44,6 +48,7 @@ export const ACTIVITY_ENTITY_LABELS: Record<ActivityLogEntityType, string> = {
 const METADATA_LABELS: Record<string, string> = {
   changed_fields: 'Campos',
   file_type: 'Tipo de arquivo',
+  event_type: 'Tipo de evento',
   has_description: 'Descrição',
   has_inverse: 'Inverso',
   has_observations: 'Observações',

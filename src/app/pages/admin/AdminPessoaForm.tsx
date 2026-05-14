@@ -22,9 +22,14 @@ import {
   substituirArquivosHistoricosDaPessoa,
 } from '../../services/arquivosHistoricosService';
 import {
+  listarEventosDaPessoa,
+  salvarEventosDaPessoa,
+} from '../../services/personEventsService';
+import {
   TipoEntidade,
   ArquivoHistorico,
   Pessoa,
+  PersonEvent,
   TipoRelacionamento,
   SubtipoRelacionamento,
   LadoPessoa,
@@ -36,6 +41,13 @@ import {
   SocialProfileForm,
   SocialProfilesEditor,
 } from '../../components/person/SocialProfilesEditor';
+import { PersonEventsEditor } from '../../components/person/PersonEventsEditor';
+import {
+  createEmptyMarriageDetails,
+  MarriageDetailsEditor,
+  MarriageDetailsForm,
+  normalizeMarriageDetails,
+} from '../../components/relationships/MarriageDetailsEditor';
 import { RelacionamentoManagerWrapper } from '../../components/RelacionamentoManagerWrapper';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
@@ -60,6 +72,7 @@ interface RelacionamentoPendente {
   pessoa: Pessoa;
   tipo: TipoRelacionamento;
   subtipo: SubtipoRelacionamento;
+  marriageDetails?: MarriageDetailsForm;
 }
 
 function createEmptyAdminPessoaFormData() {
@@ -100,6 +113,7 @@ type AdminPessoaDraft = {
   formData: AdminPessoaFormData;
   relacionamentosPendentes: RelacionamentoPendente[];
   socialProfiles: SocialProfileForm[];
+  personEvents: PersonEvent[];
   searchTerm: string;
   tipoRelSelecionado: TipoRelacionamento;
   subtipoRelSelecionado: SubtipoRelacionamento;
@@ -131,6 +145,7 @@ function readAdminPessoaDraft(key: string): AdminPessoaDraft | null {
       socialProfiles: Array.isArray(draft.socialProfiles) && draft.socialProfiles.length > 0
         ? draft.socialProfiles
         : buildSocialProfilesFromPerson(draft.formData),
+      personEvents: Array.isArray(draft.personEvents) ? draft.personEvents : [],
       searchTerm: draft.searchTerm ?? '',
       tipoRelSelecionado: draft.tipoRelSelecionado ?? 'pai',
       subtipoRelSelecionado: draft.subtipoRelSelecionado ?? 'sangue',
@@ -169,9 +184,11 @@ export function AdminPessoaForm() {
   const [showAddRelDialog, setShowAddRelDialog] = useState(false);
   const [todasPessoas, setTodasPessoas] = useState<Pessoa[]>([]);
   const [socialProfiles, setSocialProfiles] = useState<SocialProfileForm[]>(() => buildSocialProfilesFromPerson());
+  const [personEvents, setPersonEvents] = useState<PersonEvent[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [tipoRelSelecionado, setTipoRelSelecionado] = useState<TipoRelacionamento>('pai');
   const [subtipoRelSelecionado, setSubtipoRelSelecionado] = useState<SubtipoRelacionamento>('sangue');
+  const [pendingMarriageDetails, setPendingMarriageDetails] = useState<MarriageDetailsForm>(() => createEmptyMarriageDetails());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const draftKey = useMemo(() => getAdminPessoaDraftKey(isEdit, id), [id, isEdit]);
   const hasInitializedDraftRef = useRef(false);
@@ -193,6 +210,7 @@ export function AdminPessoaForm() {
 
           if (pessoa && mounted) {
             const arquivosHistoricos = await listarArquivosHistoricosPorPessoa(id);
+            const eventosDaPessoa = await listarEventosDaPessoa(id);
             const data = {
               nome_completo: pessoa.nome_completo || '',
               data_nascimento: pessoa.data_nascimento?.toString() || '',
@@ -228,11 +246,12 @@ export function AdminPessoaForm() {
               setFormData(nextFormData);
               setRelacionamentosPendentes(draft?.relacionamentosPendentes ?? []);
               setSocialProfiles(draft?.socialProfiles ?? buildSocialProfilesFromPerson(pessoa));
+              setPersonEvents(draft?.personEvents ?? eventosDaPessoa);
               setSearchTerm(draft?.searchTerm ?? '');
               setTipoRelSelecionado(draft?.tipoRelSelecionado ?? 'pai');
               setSubtipoRelSelecionado(draft?.subtipoRelSelecionado ?? 'sangue');
             }
-            setInitialData(JSON.stringify(data));
+            setInitialData(JSON.stringify({ formData: data, personEvents: eventosDaPessoa }));
             if (draft) hasUserEditedRef.current = true;
           }
         } catch (error) {
@@ -244,10 +263,11 @@ export function AdminPessoaForm() {
         setFormData(draft?.formData ?? emptyData);
         setRelacionamentosPendentes(draft?.relacionamentosPendentes ?? []);
         setSocialProfiles(draft?.socialProfiles ?? buildSocialProfilesFromPerson());
+        setPersonEvents(draft?.personEvents ?? []);
         setSearchTerm(draft?.searchTerm ?? '');
         setTipoRelSelecionado(draft?.tipoRelSelecionado ?? 'pai');
         setSubtipoRelSelecionado(draft?.subtipoRelSelecionado ?? 'sangue');
-        setInitialData(JSON.stringify(emptyData));
+        setInitialData(JSON.stringify({ formData: emptyData, personEvents: [] }));
         hasUserEditedRef.current = Boolean(draft);
         await loadTodasPessoas();
       }
@@ -275,9 +295,9 @@ export function AdminPessoaForm() {
   };
 
   useEffect(() => {
-    const currentData = JSON.stringify(formData);
+    const currentData = JSON.stringify({ formData, personEvents });
     setHasChanges(currentData !== initialData || relacionamentosPendentes.length > 0);
-  }, [formData, initialData, relacionamentosPendentes]);
+  }, [formData, initialData, personEvents, relacionamentosPendentes]);
 
   useEffect(() => {
     if (!hasInitializedDraftRef.current || !hasUserEditedRef.current) return;
@@ -286,6 +306,7 @@ export function AdminPessoaForm() {
       formData,
       relacionamentosPendentes,
       socialProfiles,
+      personEvents,
       searchTerm,
       tipoRelSelecionado,
       subtipoRelSelecionado,
@@ -295,6 +316,7 @@ export function AdminPessoaForm() {
     formData,
     relacionamentosPendentes,
     socialProfiles,
+    personEvents,
     searchTerm,
     tipoRelSelecionado,
     subtipoRelSelecionado,
@@ -349,6 +371,11 @@ export function AdminPessoaForm() {
         toast.error(Object.values(validationErrors)[0] ?? 'Revise os campos antes de salvar.');
         return;
       }
+      const invalidEvent = personEvents.find((event) => !event.titulo.trim());
+      if (invalidEvent) {
+        toast.error('Informe o título de todos os eventos da vida ou remova os eventos vazios.');
+        return;
+      }
 
       let pessoaCriada: Pessoa | undefined;
 
@@ -382,6 +409,16 @@ export function AdminPessoaForm() {
                 pessoa_destino_id: relPendente.pessoa.id,
                 tipo_relacionamento: relPendente.tipo,
                 subtipo_relacionamento: relPendente.subtipo,
+                ...(relPendente.tipo === 'conjuge'
+                  ? {
+                      data_casamento: relPendente.marriageDetails?.data_casamento.trim() || undefined,
+                      local_casamento: relPendente.marriageDetails?.local_casamento.trim() || undefined,
+                      ativo: relPendente.marriageDetails?.ativo ?? true,
+                      data_separacao: relPendente.marriageDetails?.data_separacao.trim() || undefined,
+                      local_separacao: relPendente.marriageDetails?.local_separacao.trim() || undefined,
+                      observacoes: relPendente.marriageDetails?.observacoes.trim() || undefined,
+                    }
+                  : {}),
               }, { inverseTipoForFilho: 'pai' });
 
               relsCriados++;
@@ -395,11 +432,15 @@ export function AdminPessoaForm() {
       }
 
       await substituirArquivosHistoricosDaPessoa(pessoaCriada.id, formData.arquivos_historicos || []);
+      await salvarEventosDaPessoa(pessoaCriada.id, personEvents);
 
       const snapshotAtual = JSON.stringify({
-        ...formData,
-        lado: formData.lado || 'esquerda',
-        arquivos_historicos: formData.arquivos_historicos || [],
+        formData: {
+          ...formData,
+          lado: formData.lado || 'esquerda',
+          arquivos_historicos: formData.arquivos_historicos || [],
+        },
+        personEvents,
       });
 
       setInitialData(snapshotAtual);
@@ -414,6 +455,11 @@ export function AdminPessoaForm() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handlePersonEventsChange = (eventos: PersonEvent[]) => {
+    markDraftDirty();
+    setPersonEvents(eventos);
   };
 
   const handleChange = (field: string, value: string | boolean | ArquivoHistorico[]) => {
@@ -450,6 +496,7 @@ export function AdminPessoaForm() {
   const handleCloseRelacionamentoDialog = () => {
     setShowAddRelDialog(false);
     setSearchTerm('');
+    setPendingMarriageDetails(createEmptyMarriageDetails());
   };
 
   const handleAdicionarRelacionamentoPendente = (pessoa: Pessoa) => {
@@ -477,9 +524,13 @@ export function AdminPessoaForm() {
         pessoa,
         tipo: tipoRelSelecionado,
         subtipo: subtipoRelSelecionado,
+        marriageDetails: tipoRelSelecionado === 'conjuge'
+          ? normalizeMarriageDetails(pendingMarriageDetails)
+          : undefined,
       },
     ]);
 
+    setPendingMarriageDetails(createEmptyMarriageDetails());
     handleCloseRelacionamentoDialog();
     toast.success(`${pessoa.nome_completo} adicionado(a) à lista`);
   };
@@ -489,6 +540,19 @@ export function AdminPessoaForm() {
     setRelacionamentosPendentes((prev) =>
       prev.filter((r) => !(r.pessoa.id === pessoaId && (!tipo || r.tipo === tipo)))
     );
+  };
+
+  const handlePendingMarriageDetailsChange = (
+    pessoaId: string,
+    tipo: TipoRelacionamento,
+    details: MarriageDetailsForm
+  ) => {
+    markDraftDirty();
+    setRelacionamentosPendentes((prev) => prev.map((rel) => (
+      rel.pessoa.id === pessoaId && rel.tipo === tipo
+        ? { ...rel, marriageDetails: normalizeMarriageDetails(details) }
+        : rel
+    )));
   };
 
   const getTipoLabel = (tipo: TipoRelacionamento) => {
@@ -817,6 +881,18 @@ export function AdminPessoaForm() {
             pessoaId={id}
           />
 
+          <Card>
+            <CardHeader>
+              <CardTitle>Eventos da vida</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PersonEventsEditor
+                eventos={personEvents}
+                onChange={handlePersonEventsChange}
+              />
+            </CardContent>
+          </Card>
+
           {!isEdit && (
             <Card>
               <CardHeader>
@@ -949,36 +1025,45 @@ export function AdminPessoaForm() {
                   {outrosRelacionamentos.length > 0 && (
                     <div className="space-y-2">
                       {outrosRelacionamentos.map((rel) => (
-                        <div
-                          key={`${rel.pessoa.id}-${rel.tipo}`}
-                          className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
-                        >
-                          {rel.pessoa.foto_principal_url ? (
-                            <img
-                              src={rel.pessoa.foto_principal_url}
-                              alt=""
-                              className="w-10 h-10 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                              <User className="w-5 h-5 text-gray-400" />
+                        <div key={`${rel.pessoa.id}-${rel.tipo}`} className="rounded-lg border bg-gray-50 p-3">
+                          <div className="flex items-center gap-3">
+                            {rel.pessoa.foto_principal_url ? (
+                              <img
+                                src={rel.pessoa.foto_principal_url}
+                                alt=""
+                                className="w-10 h-10 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                                <User className="w-5 h-5 text-gray-400" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {rel.pessoa.nome_completo}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {getTipoLabel(rel.tipo)} · {rel.subtipo === 'adotivo' ? 'Adotivo' : 'Sangue/Casamento'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoverRelacionamentoPendente(rel.pessoa.id, rel.tipo)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          {rel.tipo === 'conjuge' && (
+                            <div className="mt-3">
+                              <MarriageDetailsEditor
+                                value={rel.marriageDetails ?? createEmptyMarriageDetails()}
+                                onChange={(details) => handlePendingMarriageDetailsChange(rel.pessoa.id, rel.tipo, details)}
+                                isAdmin
+                                allowHistoricalFiles
+                              />
                             </div>
                           )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {rel.pessoa.nome_completo}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {getTipoLabel(rel.tipo)} · {rel.subtipo === 'adotivo' ? 'Adotivo' : 'Sangue/Casamento'}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoverRelacionamentoPendente(rel.pessoa.id, rel.tipo)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
                         </div>
                       ))}
                     </div>
@@ -1034,6 +1119,9 @@ export function AdminPessoaForm() {
                     const nextTipo = e.target.value as TipoRelacionamento;
                     setTipoRelSelecionado(nextTipo);
                     setSubtipoRelSelecionado(nextTipo === 'conjuge' ? 'casamento' : 'sangue');
+                    if (nextTipo !== 'conjuge') {
+                      setPendingMarriageDetails(createEmptyMarriageDetails());
+                    }
                   }}
                   className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
                 >
@@ -1122,6 +1210,18 @@ export function AdminPessoaForm() {
                 </div>
               )}
             </div>
+
+            {tipoRelSelecionado === 'conjuge' && (
+              <MarriageDetailsEditor
+                value={pendingMarriageDetails}
+                onChange={(details) => {
+                  markDraftDirty();
+                  setPendingMarriageDetails(details);
+                }}
+                isAdmin
+                allowHistoricalFiles
+              />
+            )}
           </div>
 
           <DialogFooter>

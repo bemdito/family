@@ -15,11 +15,24 @@ import {
 } from 'lucide-react';
 import {
   adicionarRelacionamentoComInverso,
+  atualizarRelacionamento,
   excluirRelacionamentoComInverso,
   excluirRelacionamentoPorPayloadComInverso,
+  encontrarRelacionamentoInverso,
   obterTodasPessoas,
+  obterTodosRelacionamentos,
 } from '../services/dataService';
+import {
+  listarArquivosHistoricosDoRelacionamento,
+  salvarArquivosHistoricosDoRelacionamento,
+} from '../services/arquivosHistoricosService';
 import { includesNormalizedText } from '../utils/searchText';
+import {
+  createEmptyMarriageDetails,
+  MarriageDetailsEditor,
+  MarriageDetailsForm,
+  normalizeMarriageDetails,
+} from './relationships/MarriageDetailsEditor';
 
 interface RelacionamentoManagerProps {
   pessoaId: string;
@@ -42,6 +55,7 @@ interface RelacionamentoComPessoa {
   subtipo?: SubtipoRelacionamento;
   pessoa: Pessoa;
   relacionamentoId?: string;
+  relacionamento?: Relacionamento;
 }
 
 export function RelacionamentoManager({
@@ -58,12 +72,9 @@ export function RelacionamentoManager({
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const [parentGender, setParentGender] = useState<'pai' | 'mae'>('pai');
-  const [conjugalForm, setConjugalForm] = useState({
-    ativo: true,
-    data_separacao: '',
-    local_separacao: '',
-    observacoes: '',
-  });
+  const [conjugalForm, setConjugalForm] = useState<MarriageDetailsForm>(() => createEmptyMarriageDetails());
+  const [marriageDetailsByRelationshipId, setMarriageDetailsByRelationshipId] = useState<Record<string, MarriageDetailsForm>>({});
+  const [savingMarriageId, setSavingMarriageId] = useState<string | null>(null);
 
   useEffect(() => {
     loadPessoas();
@@ -75,30 +86,68 @@ export function RelacionamentoManager({
     setTodasPessoas(pessoas.filter(p => p.id !== pessoaId));
   };
 
-  const loadRelacionamentos = () => {
+  const findRelationshipBetween = (
+    relacionamentos: Relacionamento[],
+    relatedId: string,
+    acceptedType: TipoRelacionamento,
+  ) => relacionamentos.find((rel) => (
+    rel.tipo_relacionamento === acceptedType &&
+    (
+      (rel.pessoa_origem_id === pessoaId && rel.pessoa_destino_id === relatedId) ||
+      (rel.pessoa_origem_id === relatedId && rel.pessoa_destino_id === pessoaId)
+    )
+  ));
+
+  const buildMarriageDetails = async (rel?: Relacionamento): Promise<MarriageDetailsForm> => {
+    if (!rel?.id) return createEmptyMarriageDetails();
+
+    const arquivos = await listarArquivosHistoricosDoRelacionamento(rel.id).catch(() => []);
+    return normalizeMarriageDetails({
+      data_casamento: String(rel.data_casamento ?? ''),
+      local_casamento: String(rel.local_casamento ?? ''),
+      ativo: rel.ativo ?? true,
+      data_separacao: String(rel.data_separacao ?? ''),
+      local_separacao: String(rel.local_separacao ?? ''),
+      observacoes: String(rel.observacoes ?? ''),
+      arquivos_historicos: arquivos,
+    });
+  };
+
+  const loadRelacionamentos = async () => {
+    const allRelacionamentos = await obterTodosRelacionamentos();
     const rels: RelacionamentoComPessoa[] = [];
+    const nextMarriageDetails: Record<string, MarriageDetailsForm> = {};
 
     relacionamentosIniciais.pais.forEach(p => {
-      rels.push({ id: `pai-${p.id}`, tipo: 'pai', pessoa: p, subtipo: 'sangue' });
+      const relacionamento = findRelationshipBetween(allRelacionamentos, p.id, 'pai');
+      rels.push({ id: `pai-${p.id}`, tipo: 'pai', pessoa: p, subtipo: relacionamento?.subtipo_relacionamento ?? 'sangue', relacionamentoId: relacionamento?.id, relacionamento });
     });
 
     relacionamentosIniciais.maes.forEach(p => {
-      rels.push({ id: `mae-${p.id}`, tipo: 'mae', pessoa: p, subtipo: 'sangue' });
+      const relacionamento = findRelationshipBetween(allRelacionamentos, p.id, 'mae');
+      rels.push({ id: `mae-${p.id}`, tipo: 'mae', pessoa: p, subtipo: relacionamento?.subtipo_relacionamento ?? 'sangue', relacionamentoId: relacionamento?.id, relacionamento });
     });
 
-    relacionamentosIniciais.conjuges.forEach(p => {
-      rels.push({ id: `conjuge-${p.id}`, tipo: 'conjuge', pessoa: p, subtipo: 'casamento' });
-    });
+    for (const p of relacionamentosIniciais.conjuges) {
+      const relacionamento = findRelationshipBetween(allRelacionamentos, p.id, 'conjuge');
+      rels.push({ id: `conjuge-${p.id}`, tipo: 'conjuge', pessoa: p, subtipo: relacionamento?.subtipo_relacionamento ?? 'casamento', relacionamentoId: relacionamento?.id, relacionamento });
+      if (relacionamento?.id) {
+        nextMarriageDetails[relacionamento.id] = await buildMarriageDetails(relacionamento);
+      }
+    }
 
     relacionamentosIniciais.filhos.forEach(p => {
-      rels.push({ id: `filho-${p.id}`, tipo: 'filho', pessoa: p, subtipo: 'sangue' });
+      const relacionamento = findRelationshipBetween(allRelacionamentos, p.id, 'filho');
+      rels.push({ id: `filho-${p.id}`, tipo: 'filho', pessoa: p, subtipo: relacionamento?.subtipo_relacionamento ?? 'sangue', relacionamentoId: relacionamento?.id, relacionamento });
     });
 
     relacionamentosIniciais.irmaos.forEach(p => {
-      rels.push({ id: `irmao-${p.id}`, tipo: 'irmao', pessoa: p, subtipo: 'sangue' });
+      const relacionamento = findRelationshipBetween(allRelacionamentos, p.id, 'irmao');
+      rels.push({ id: `irmao-${p.id}`, tipo: 'irmao', pessoa: p, subtipo: relacionamento?.subtipo_relacionamento ?? 'sangue', relacionamentoId: relacionamento?.id, relacionamento });
     });
 
     setRelacionamentos(rels);
+    setMarriageDetailsByRelationshipId(nextMarriageDetails);
   };
 
   const handleAdicionarRelacionamento = async (pessoaSelecionada: Pessoa) => {
@@ -112,6 +161,8 @@ export function RelacionamentoManager({
         tipo_relacionamento: tipoSelecionado as TipoRelacionamento,
         subtipo_relacionamento: subtipoSelecionado,
         ativo: tipoSelecionado === 'conjuge' ? conjugalForm.ativo : true,
+        data_casamento: tipoSelecionado === 'conjuge' ? conjugalForm.data_casamento.trim() || undefined : undefined,
+        local_casamento: tipoSelecionado === 'conjuge' ? conjugalForm.local_casamento.trim() || undefined : undefined,
         data_separacao: tipoSelecionado === 'conjuge' ? conjugalForm.data_separacao || undefined : undefined,
         local_separacao: tipoSelecionado === 'conjuge' ? conjugalForm.local_separacao.trim() || undefined : undefined,
         observacoes: tipoSelecionado === 'conjuge' ? conjugalForm.observacoes.trim() || undefined : undefined,
@@ -129,23 +180,68 @@ export function RelacionamentoManager({
           subtipo: subtipoSelecionado,
           pessoa: pessoaSelecionada,
           relacionamentoId: rel1.id,
+          relacionamento: rel1,
         },
       ]);
 
       setShowAddDialog(false);
       setSearchTerm('');
-      setConjugalForm({
-        ativo: true,
-        data_separacao: '',
-        local_separacao: '',
-        observacoes: '',
-      });
+      if (tipoSelecionado === 'conjuge') {
+        setMarriageDetailsByRelationshipId((current) => ({
+          ...current,
+          [rel1.id]: normalizeMarriageDetails(conjugalForm),
+        }));
+      }
+      setConjugalForm(createEmptyMarriageDetails());
       onChange?.();
     } catch (error) {
       console.error('Erro ao adicionar relacionamento:', error);
       alert(`Erro ao adicionar relacionamento: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMarriageDetailsChange = (relacionamentoId: string, details: MarriageDetailsForm) => {
+    setMarriageDetailsByRelationshipId((current) => ({
+      ...current,
+      [relacionamentoId]: normalizeMarriageDetails(details),
+    }));
+  };
+
+  const handleSalvarMarriageDetails = async (rel: RelacionamentoComPessoa) => {
+    if (!rel.relacionamentoId || !rel.relacionamento) return;
+
+    const details = normalizeMarriageDetails(marriageDetailsByRelationshipId[rel.relacionamentoId]);
+    setSavingMarriageId(rel.relacionamentoId);
+
+    try {
+      const payload: Partial<Relacionamento> = {
+        data_casamento: details.data_casamento.trim() || null,
+        local_casamento: details.local_casamento.trim() || null,
+        ativo: details.ativo,
+        data_separacao: details.data_separacao.trim() || null,
+        local_separacao: details.local_separacao.trim() || null,
+        observacoes: details.observacoes.trim() || null,
+      };
+
+      const updated = await atualizarRelacionamento(rel.relacionamentoId, payload);
+      const inverse = await encontrarRelacionamentoInverso(rel.relacionamento);
+      if (inverse) {
+        await atualizarRelacionamento(inverse.id, payload);
+      }
+
+      if (updated) {
+        await salvarArquivosHistoricosDoRelacionamento(rel.relacionamentoId, details.arquivos_historicos ?? []);
+      }
+
+      await loadRelacionamentos();
+      onChange?.();
+    } catch (error) {
+      console.error('Erro ao salvar dados conjugais:', error);
+      alert(error instanceof Error ? error.message : 'Erro ao salvar dados conjugais');
+    } finally {
+      setSavingMarriageId(null);
     }
   };
 
@@ -262,12 +358,7 @@ export function RelacionamentoManager({
                     setTipoSelecionado(nextTipo);
                     setSubtipoSelecionado(nextTipo === 'conjuge' ? 'casamento' : 'sangue');
                     if (nextTipo !== 'conjuge') {
-                      setConjugalForm({
-                        ativo: true,
-                        data_separacao: '',
-                        local_separacao: '',
-                        observacoes: '',
-                      });
+                      setConjugalForm(createEmptyMarriageDetails());
                     }
                   }}
                   className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
@@ -325,56 +416,12 @@ export function RelacionamentoManager({
             )}
 
             {tipoSelecionado === 'conjuge' && (
-              <div className="grid grid-cols-1 gap-3 rounded-lg border border-blue-100 bg-white p-3 md:grid-cols-2">
-                <label className="flex items-center gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={conjugalForm.ativo}
-                    onChange={(event) =>
-                      setConjugalForm((current) => ({ ...current, ativo: event.target.checked }))
-                    }
-                    className="h-4 w-4"
-                  />
-                  Relacionamento ativo
-                </label>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Data de separação
-                  </label>
-                  <Input
-                    type="date"
-                    value={conjugalForm.data_separacao}
-                    onChange={(event) =>
-                      setConjugalForm((current) => ({ ...current, data_separacao: event.target.value }))
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Local de separação
-                  </label>
-                  <Input
-                    value={conjugalForm.local_separacao}
-                    onChange={(event) =>
-                      setConjugalForm((current) => ({ ...current, local_separacao: event.target.value }))
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Observações internas
-                  </label>
-                  <Input
-                    value={conjugalForm.observacoes}
-                    onChange={(event) =>
-                      setConjugalForm((current) => ({ ...current, observacoes: event.target.value }))
-                    }
-                  />
-                </div>
-              </div>
+              <MarriageDetailsEditor
+                value={conjugalForm}
+                onChange={setConjugalForm}
+                isAdmin
+                allowHistoricalFiles
+              />
             )}
 
             <div>
@@ -447,33 +494,56 @@ export function RelacionamentoManager({
                   {rels.map(rel => (
                     <div
                       key={rel.id}
-                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
+                      className="rounded-lg border border-gray-200 bg-gray-50 p-3"
                     >
-                      {rel.pessoa.foto_principal_url ? (
-                        <img
-                          src={rel.pessoa.foto_principal_url}
-                          alt={rel.pessoa.nome_completo}
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                          <User className="w-5 h-5 text-gray-400" />
+                      <div className="flex items-center gap-3">
+                        {rel.pessoa.foto_principal_url ? (
+                          <img
+                            src={rel.pessoa.foto_principal_url}
+                            alt={rel.pessoa.nome_completo}
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                            <User className="w-5 h-5 text-gray-400" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">{rel.pessoa.nome_completo}</p>
+                          {rel.subtipo && (
+                            <p className="text-xs text-gray-500 capitalize">{rel.subtipo}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoverRelacionamento(rel)}
+                          disabled={loading}
+                          className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {rel.tipo === 'conjuge' && rel.relacionamentoId && (
+                        <div className="mt-3 space-y-3 rounded-lg border border-gray-200 bg-white p-3">
+                          <MarriageDetailsEditor
+                            value={marriageDetailsByRelationshipId[rel.relacionamentoId] ?? createEmptyMarriageDetails()}
+                            onChange={(details) => handleMarriageDetailsChange(rel.relacionamentoId!, details)}
+                            relacionamentoId={rel.relacionamentoId}
+                            isAdmin
+                            allowHistoricalFiles
+                          />
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleSalvarMarriageDetails(rel)}
+                              disabled={savingMarriageId === rel.relacionamentoId}
+                            >
+                              {savingMarriageId === rel.relacionamentoId ? 'Salvando...' : 'Salvar dados do casamento'}
+                            </Button>
+                          </div>
                         </div>
                       )}
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{rel.pessoa.nome_completo}</p>
-                        {rel.subtipo && (
-                          <p className="text-xs text-gray-500 capitalize">{rel.subtipo}</p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoverRelacionamento(rel)}
-                        disabled={loading}
-                        className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
                     </div>
                   ))}
                 </div>
