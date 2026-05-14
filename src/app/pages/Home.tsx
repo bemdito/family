@@ -58,7 +58,7 @@ import {
   MarriageNodeDetails,
 } from '../components/FamilyTree/types';
 import { TreeViewMode } from '../components/FamilyTree/ViewModeToggle';
-import { FAMILY_TREE_COLORS, hasDeathDate } from '../components/FamilyTree/visualTokens';
+import { FAMILY_TREE_COLORS } from '../components/FamilyTree/visualTokens';
 import {
   DIRECT_FAMILY_CARD_TEXT_COLORS,
   DIRECT_FAMILY_LEGEND_BACKGROUNDS,
@@ -75,7 +75,7 @@ import {
   obterInsightsGeradosPessoa,
   PersonGeneratedInsight,
 } from '../services/personInsightsService';
-import { getPersonZodiacSign } from '../utils/personFields';
+import { getPersonZodiacSign, isPersonDeceased } from '../utils/personFields';
 import {
   Search,
   Lightbulb,
@@ -626,7 +626,7 @@ export function Home() {
         return personFilters.pets;
       }
 
-      if (hasDeathDate(pessoa.data_falecimento)) {
+      if (isPersonDeceased(pessoa)) {
         return personFilters.falecidos;
       }
 
@@ -635,8 +635,8 @@ export function Home() {
   }, [centralReferencePersonId, pessoas, personFilters]);
 
   const stats = useMemo(() => {
-    const pessoasVivas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && !hasDeathDate(p.data_falecimento));
-    const pessoasFalecidas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && hasDeathDate(p.data_falecimento));
+    const pessoasVivas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && !isPersonDeceased(p));
+    const pessoasFalecidas = pessoas.filter((p) => p.humano_ou_pet === 'Humano' && isPersonDeceased(p));
     const pets = pessoas.filter((p) => p.humano_ou_pet === 'Pet');
 
     const pessoasComConjuge = new Set<string>();
@@ -1642,7 +1642,9 @@ function ContactInfo({ pessoa }: { pessoa: Pessoa }) {
       : null,
     pessoa.data_falecimento
       ? ['Data de falecimento', String(pessoa.data_falecimento)]
-      : null,
+      : isPersonDeceased(pessoa)
+        ? ['Falecimento', 'Falecido(a)']
+        : null,
     pessoa.local_falecimento
       ? ['Local de falecimento', pessoa.local_falecimento]
       : null,
@@ -2156,7 +2158,7 @@ function calculateCuriosities(pessoas: Pessoa[], relacionamentos: Relacionamento
   const sortedByBirth = [...withBirth].sort((a, b) => a.birth - b.birth);
 
   const currentCities = countCityPeople(
-    humans.filter((pessoa) => !hasDeathDate(pessoa.data_falecimento)),
+    humans.filter((pessoa) => !isPersonDeceased(pessoa)),
     (pessoa) => pessoa.local_atual
   );
   const birthCities = countCityPeople(humans, (pessoa) => pessoa.local_nascimento);

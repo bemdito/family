@@ -3,7 +3,7 @@ import { BookOpen, Calendar, CalendarClock, Dog, Globe, Home, Lightbulb, MapPin,
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { Pessoa } from '../../types';
-import { formatPhone, getPersonZodiacSign } from '../../utils/personFields';
+import { formatPhone, getPersonZodiacSign, isPersonDeceased } from '../../utils/personFields';
 import { buildWhatsAppUrl, getSocialLink, isBirthDate, shouldShowAquariusFallback } from '../../utils/personProfile';
 import {
   gerarInsightsPessoa,
@@ -41,7 +41,7 @@ export function PersonDataView({ pessoa }: { pessoa: Pessoa }) {
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const isPet = pessoa.humano_ou_pet === 'Pet';
-  const isFalecido = Boolean(pessoa.data_falecimento);
+  const isFalecido = isPersonDeceased(pessoa);
   const canShowBirthDate = pessoa.permitir_exibir_data_nascimento !== false;
   const zodiacSign = canShowBirthDate ? getPersonZodiacSign(pessoa) : undefined;
   const canShowSocial = Boolean(
@@ -160,7 +160,7 @@ export function PersonDataView({ pessoa }: { pessoa: Pessoa }) {
                 )}
                 <InfoItem icon={<MapPin className="h-4 w-4" />} label="Local de nascimento" value={pessoa.local_nascimento} />
                 {!isFalecido && <InfoItem icon={<Home className="h-4 w-4" />} label="Residência atual" value={pessoa.local_atual} />}
-                <InfoItem icon={<Calendar className="h-4 w-4" />} label="Falecimento" value={pessoa.data_falecimento} />
+                <InfoItem icon={<Calendar className="h-4 w-4" />} label="Falecimento" value={pessoa.data_falecimento || (isFalecido ? 'Falecido(a)' : undefined)} />
                 <InfoItem icon={<MapPin className="h-4 w-4" />} label="Local de falecimento" value={pessoa.local_falecimento} />
               </div>
             </div>

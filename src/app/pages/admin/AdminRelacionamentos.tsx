@@ -11,6 +11,7 @@ import {
   excluirRelacionamentoComInverso,
 } from '../../services/dataService';
 import { Relacionamento, Pessoa, SubtipoRelacionamento } from '../../types';
+import { isPersonDeceased } from '../../utils/personFields';
 import { ArrowLeft, Edit3, Plus, Save, Trash2, Heart, Users as UsersIcon, X } from 'lucide-react';
 
 type MarriageEditForm = {
@@ -21,10 +22,6 @@ type MarriageEditForm = {
   observacoes: string;
 };
 
-function hasDeathDate(value?: number | string | null) {
-  return Boolean(value && String(value).trim());
-}
-
 function getMarriageStatus(rel: Relacionamento, pessoa1?: Pessoa, pessoa2?: Pessoa) {
   if (rel.subtipo_relacionamento === 'separado' || rel.data_separacao) {
     return 'Separado';
@@ -34,7 +31,7 @@ function getMarriageStatus(rel: Relacionamento, pessoa1?: Pessoa, pessoa2?: Pess
     return 'Inativo';
   }
 
-  if (hasDeathDate(pessoa1?.data_falecimento) || hasDeathDate(pessoa2?.data_falecimento)) {
+  if (isPersonDeceased(pessoa1) || isPersonDeceased(pessoa2)) {
     return 'Viuvez';
   }
 

@@ -1,5 +1,5 @@
 import { Pessoa } from '../../../types';
-import { hasDeathDate } from '../visualTokens';
+import { isPersonDeceased } from '../../../utils/personFields';
 
 export function extractYear(value?: string | number | null) {
   if (value === null || value === undefined) return undefined;
@@ -38,14 +38,15 @@ export function normalizeBirthPlace(value?: string | null) {
   return normalized || undefined;
 }
 
-export function getPersonCardSecondaryText(pessoa: Pick<Pessoa, 'data_nascimento' | 'data_falecimento' | 'local_nascimento'>) {
+export function getPersonCardSecondaryText(pessoa: Pick<Pessoa, 'falecido' | 'data_nascimento' | 'data_falecimento' | 'local_falecimento' | 'local_nascimento'>) {
   const birthYear = extractYear(pessoa.data_nascimento);
   const deathYear = extractYear(pessoa.data_falecimento);
 
-  if (hasDeathDate(pessoa.data_falecimento)) {
+  if (isPersonDeceased(pessoa)) {
     if (birthYear && deathYear) return `⭐ ${birthYear} - ✝ ${deathYear}`;
     if (deathYear) return `⭐ ✝ ${deathYear}`;
-    if (birthYear) return `⭐ ${birthYear}`;
+    if (birthYear) return `⭐ ${birthYear} - ✝`;
+    return '✝ Falecido(a)';
   }
 
   const birthPlace = normalizeBirthPlace(pessoa.local_nascimento);

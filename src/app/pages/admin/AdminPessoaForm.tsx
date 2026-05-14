@@ -47,8 +47,11 @@ import {
   maskBirthDate,
   normalizeBirthDate,
   normalizeLocation,
+  normalizeLocationByMode,
+  isPersonDeceased,
   syncFirstSocialProfileToPersonFields,
   validateEditablePersonForm,
+  validateLocationByMode,
 } from '../../utils/personFields';
 import { includesNormalizedText } from '../../utils/searchText';
 import { toast } from 'sonner';
@@ -64,8 +67,11 @@ function createEmptyAdminPessoaFormData() {
     nome_completo: '',
     data_nascimento: '',
     local_nascimento: '',
+    local_nascimento_exterior: false,
     data_falecimento: '',
     local_falecimento: '',
+    local_falecimento_exterior: false,
+    falecido: false,
     local_atual: '',
     foto_principal_url: '',
     humano_ou_pet: 'Humano' as TipoEntidade,
@@ -171,7 +177,7 @@ export function AdminPessoaForm() {
   const hasInitializedDraftRef = useRef(false);
   const hasUserEditedRef = useRef(false);
 
-  const isFalecido = !!(formData.data_falecimento || formData.local_falecimento);
+  const isFalecido = isPersonDeceased(formData);
 
   useEffect(() => {
     let mounted = true;
@@ -191,8 +197,11 @@ export function AdminPessoaForm() {
               nome_completo: pessoa.nome_completo || '',
               data_nascimento: pessoa.data_nascimento?.toString() || '',
               local_nascimento: pessoa.local_nascimento || '',
+              local_nascimento_exterior: pessoa.local_nascimento_exterior ?? false,
               data_falecimento: pessoa.data_falecimento?.toString() || '',
               local_falecimento: pessoa.local_falecimento || '',
+              local_falecimento_exterior: pessoa.local_falecimento_exterior ?? false,
+              falecido: pessoa.falecido ?? Boolean(pessoa.data_falecimento || pessoa.local_falecimento),
               local_atual: pessoa.local_atual || '',
               foto_principal_url: pessoa.foto_principal_url || '',
               humano_ou_pet: pessoa.humano_ou_pet || ('Humano' as TipoEntidade),
@@ -315,14 +324,27 @@ export function AdminPessoaForm() {
         ...cleanPersonPayload(formData),
         data_nascimento: normalizeBirthDate(formData.data_nascimento) || undefined,
         data_falecimento: normalizeBirthDate(formData.data_falecimento) || undefined,
-        local_nascimento: normalizeLocation(formData.local_nascimento),
+        falecido: isFalecido,
+        local_nascimento: normalizeLocationByMode(formData.local_nascimento, {
+          international: formData.local_nascimento_exterior,
+        }),
         local_atual: normalizeLocation(formData.local_atual),
-        local_falecimento: normalizeLocation(formData.local_falecimento),
+        local_falecimento: normalizeLocationByMode(formData.local_falecimento, {
+          international: formData.local_falecimento_exterior,
+        }),
+        local_nascimento_exterior: formData.local_nascimento_exterior === true,
+        local_falecimento_exterior: formData.local_falecimento_exterior === true,
         lado: formData.lado || 'esquerda',
         manual_generation: formData.manual_generation ? Number(formData.manual_generation) : null,
       };
 
       const validationErrors = validateEditablePersonForm(pessoaData);
+      const deathLocationError = validateLocationByMode(String(pessoaData.local_falecimento ?? ''), {
+        international: pessoaData.local_falecimento_exterior === true,
+      });
+      if (deathLocationError) {
+        (validationErrors as Record<string, string>).local_falecimento = deathLocationError;
+      }
       if (Object.keys(validationErrors).length > 0) {
         toast.error(Object.values(validationErrors)[0] ?? 'Revise os campos antes de salvar.');
         return;
@@ -396,7 +418,13 @@ export function AdminPessoaForm() {
 
   const handleChange = (field: string, value: string | boolean | ArquivoHistorico[]) => {
     markDraftDirty();
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+      ...((field === 'data_falecimento' || field === 'local_falecimento') && String(value).trim()
+        ? { falecido: true }
+        : {}),
+    }));
   };
 
   const handleRedeSocialPrivacyChange = (checked: boolean) => {
@@ -605,8 +633,28 @@ export function AdminPessoaForm() {
                     type="text"
                     value={formData.local_nascimento}
                     onChange={(e) => handleChange('local_nascimento', e.target.value)}
-                    onBlur={() => handleChange('local_nascimento', normalizeLocation(formData.local_nascimento))}
-                    placeholder="Ex: São Paulo/SP"
+                    onBlur={() => handleChange('local_nascimento', normalizeLocationByMode(formData.local_nascimento, {
+                      international: formData.local_nascimento_exterior,
+                    }))}
+                    placeholder={formData.local_nascimento_exterior ? 'Ex: Dublin (Irlanda)' : 'Ex: São Paulo/SP'}
+                  />
+                  <label className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={formData.local_nascimento_exterior === true}
+                      onChange={(event) => handleChange('local_nascimento_exterior', event.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                    />
+                    Local de nascimento fora do Brasil
+                  </label>
+                </div>
+
+                <div className="md:col-span-2">
+                  <PrivacyCheckbox
+                    label="Pessoa falecida"
+                    description="Marque mesmo que a data ou o local de falecimento sejam desconhecidos."
+                    checked={formData.falecido === true}
+                    onChange={(checked) => handleChange('falecido', checked)}
                   />
                 </div>
 
@@ -626,9 +674,20 @@ export function AdminPessoaForm() {
                     type="text"
                     value={formData.local_falecimento}
                     onChange={(e) => handleChange('local_falecimento', e.target.value)}
-                    onBlur={() => handleChange('local_falecimento', normalizeLocation(formData.local_falecimento))}
-                    placeholder="Ex: Rio de Janeiro/RJ"
+                    onBlur={() => handleChange('local_falecimento', normalizeLocationByMode(formData.local_falecimento, {
+                      international: formData.local_falecimento_exterior,
+                    }))}
+                    placeholder={formData.local_falecimento_exterior ? 'Ex: Lisboa (Portugal)' : 'Ex: Rio de Janeiro/RJ'}
                   />
+                  <label className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={formData.local_falecimento_exterior === true}
+                      onChange={(event) => handleChange('local_falecimento_exterior', event.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                    />
+                    Local de falecimento fora do Brasil
+                  </label>
                 </div>
 
                 {!isFalecido && (
@@ -1082,10 +1141,12 @@ export function AdminPessoaForm() {
 
 function PrivacyCheckbox({
   label,
+  description,
   checked,
   onChange,
 }: {
   label: string;
+  description?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {
@@ -1097,7 +1158,10 @@ function PrivacyCheckbox({
         onChange={(event) => onChange(event.target.checked)}
         className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
       />
-      <span>{label}</span>
+      <span>
+        <span className="block">{label}</span>
+        {description && <span className="mt-1 block text-xs text-gray-500">{description}</span>}
+      </span>
     </label>
   );
 }

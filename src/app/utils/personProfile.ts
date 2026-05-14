@@ -1,5 +1,5 @@
 import { Pessoa } from '../types';
-import { getPersonZodiacSign } from './personFields';
+import { getPersonZodiacSign, isPersonDeceased } from './personFields';
 
 export function getYearFromDate(value?: string | number) {
   if (value === undefined || value === null) return undefined;
@@ -53,13 +53,13 @@ export function getRelationshipSubtitle(person: Pessoa) {
   const birthPlace = person.local_nascimento;
   const deathPlace = person.local_falecimento;
 
-  if (person.data_falecimento) {
+  if (isPersonDeceased(person)) {
     const age = calculateAgeAtDeath(person.data_nascimento, person.data_falecimento);
     const parts: string[] = [];
 
     if (age !== undefined && deathYear) parts.push(`Falecimento aos ${age} anos em ${deathYear}`);
     else if (deathYear) parts.push(`Falecimento em ${deathYear}`);
-    else parts.push('Falecimento registrado');
+    else parts.push('Falecido(a)');
 
     if (deathPlace) parts.push(deathPlace);
     return parts.join(' · ');

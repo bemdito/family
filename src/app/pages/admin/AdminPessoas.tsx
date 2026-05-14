@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { includesNormalizedText } from '../../utils/searchText';
+import { isPersonDeceased } from '../../utils/personFields';
 
 type AdvancedFilters = {
   status: Array<'vivos' | 'falecidos'>;
@@ -126,7 +127,7 @@ function matchesAny<T extends string>(selected: T[], predicate: (value: T) => bo
 }
 
 function matchesAdvancedFilters(pessoa: Pessoa, filters: AdvancedFilters) {
-  const isFalecido = hasValue(pessoa.data_falecimento) || hasValue(pessoa.local_falecimento);
+  const isFalecido = isPersonDeceased(pessoa);
   const hasPhoto = hasValue(pessoa.foto_principal_url);
   const generation = typeof pessoa.manual_generation === 'number' ? String(pessoa.manual_generation) : '';
   const hasTelefone = hasValue(pessoa.telefone);

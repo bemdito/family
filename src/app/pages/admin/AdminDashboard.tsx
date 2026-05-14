@@ -7,6 +7,7 @@ import { obterTodasPessoas, obterTodosRelacionamentos } from '../../services/dat
 import { getActivityActionLabel, getActivitySummary, listRecentActivityLogs } from '../../services/activityLogService';
 import { listPendingRelationshipChangeRequests } from '../../services/relationshipChangeRequestService';
 import { ActivityLog } from '../../types';
+import { isPersonDeceased } from '../../utils/personFields';
 import {
   Users,
   Link2,
@@ -25,6 +26,8 @@ type Pessoa = {
   local_nascimento?: string | null;
   humano_ou_pet?: 'Humano' | 'Pet' | string;
   data_falecimento?: string | null;
+  local_falecimento?: string | null;
+  falecido?: boolean | null;
 };
 
 type Relacionamento = {
@@ -80,7 +83,7 @@ export function AdminDashboard() {
     totalPessoas: pessoas.length,
     totalHumanos: pessoas.filter((p) => p.humano_ou_pet === 'Humano').length,
     totalPets: pessoas.filter((p) => p.humano_ou_pet === 'Pet').length,
-    totalFalecidos: pessoas.filter((p) => !!p.data_falecimento).length,
+    totalFalecidos: pessoas.filter((p) => isPersonDeceased(p)).length,
     totalRelacionamentos: relacionamentos.length,
     pendingRelationshipRequests,
     totalCasamentos: Math.floor(

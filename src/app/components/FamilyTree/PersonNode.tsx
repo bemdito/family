@@ -5,8 +5,8 @@ import { PersonNodeData } from './types';
 import {
   DIRECT_FAMILY_TOKENS,
   FAMILY_TREE_COLORS,
-  hasDeathDate,
 } from './visualTokens';
+import { isPersonDeceased } from '../../utils/personFields';
 import {
   DIRECT_FAMILY_CARD_TEXT_COLORS,
   DIRECT_FAMILY_RELATION_COLORS,
@@ -208,7 +208,7 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
   const menuRef = React.useRef<HTMLDivElement | null>(null);
 
   const isPet = pessoa.humano_ou_pet === 'Pet';
-  const isFalecido = hasDeathDate(pessoa.data_falecimento);
+  const isFalecido = isPersonDeceased(pessoa);
 
   const handleClick = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();

@@ -115,8 +115,11 @@ export interface Pessoa {
   nome_completo: string;
   data_nascimento?: number | string;
   local_nascimento?: string;
+  local_nascimento_exterior?: boolean;
   data_falecimento?: number | string;
   local_falecimento?: string;
+  local_falecimento_exterior?: boolean;
+  falecido?: boolean;
   local_atual?: string;
   foto_principal_url?: string;
   humano_ou_pet: TipoEntidade;

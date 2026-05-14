@@ -4,6 +4,7 @@ import { limparCacheParentesco } from './relationshipCacheService';
 import { createActivityLog } from './activityLogService';
 import { emitTreeDataChanged } from './treeDataCache';
 import { includesNormalizedText } from '../utils/searchText';
+import { isPersonDeceased } from '../utils/personFields';
 
 type SupabaseErrorLike = {
   message?: string;
@@ -17,8 +18,11 @@ const PESSOA_COLUMNS = [
   'nome_completo',
   'data_nascimento',
   'local_nascimento',
+  'local_nascimento_exterior',
   'data_falecimento',
   'local_falecimento',
+  'local_falecimento_exterior',
+  'falecido',
   'local_atual',
   'foto_principal_url',
   'humano_ou_pet',
@@ -116,6 +120,9 @@ function toPessoa(row: any): Pessoa {
   return {
     ...row,
     humano_ou_pet: row?.humano_ou_pet || 'Humano',
+    falecido: row?.falecido ?? isPersonDeceased(row),
+    local_nascimento_exterior: row?.local_nascimento_exterior ?? false,
+    local_falecimento_exterior: row?.local_falecimento_exterior ?? false,
     permitir_exibir_data_nascimento: row?.permitir_exibir_data_nascimento ?? true,
     permitir_exibir_endereco: row?.permitir_exibir_endereco ?? true,
     permitir_exibir_rede_social: row?.permitir_exibir_rede_social ?? row?.permitir_exibir_instagram ?? true,
@@ -848,8 +855,18 @@ export async function importarDadosFamilia(dados: any[]) {
           nome_completo: nomeCompleto,
           data_nascimento: registro['Data de nascimento']?.toString() || registro.data_nascimento?.toString() || '',
           local_nascimento: registro['Local de Nascimento'] || registro.local_nascimento || '',
+          local_nascimento_exterior: Boolean(registro.local_nascimento_exterior === true || registro.local_nascimento_exterior === 'true'),
           data_falecimento: registro['Data de falecimento']?.toString() || registro.data_falecimento?.toString() || '',
           local_falecimento: registro['Local de Falecimento'] || registro.local_falecimento || '',
+          local_falecimento_exterior: Boolean(registro.local_falecimento_exterior === true || registro.local_falecimento_exterior === 'true'),
+          falecido: Boolean(
+            registro.falecido === true ||
+            registro.falecido === 'true' ||
+            registro['Data de falecimento'] ||
+            registro.data_falecimento ||
+            registro['Local de Falecimento'] ||
+            registro.local_falecimento
+          ),
           humano_ou_pet: registro['Humano ou pet'] || registro.humano_ou_pet || 'Humano',
           lado: registro.lado || 'esquerda',
           manual_generation: normalizeManualGeneration(registro.manual_generation),

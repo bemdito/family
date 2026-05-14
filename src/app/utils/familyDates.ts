@@ -1,4 +1,5 @@
 import { Pessoa, Relacionamento } from '../types';
+import { isPersonDeceased } from './personFields';
 
 export type CalendarEventCategory =
   | 'aniversarios'
@@ -246,7 +247,7 @@ export function criarEventosDoCalendario(
 
   for (const pessoa of pessoas) {
     const nascimento = parseFlexibleFamilyDate(pessoa.data_nascimento);
-    if (nascimento && !hasDeathDate(pessoa.data_falecimento)) {
+    if (nascimento && !isPersonDeceased(pessoa)) {
       const idade = calcularIdadeOuTempoDecorrido(nascimento).anos;
       eventos.push({
         id: `${pessoa.id}-aniversario`,
@@ -311,7 +312,7 @@ export function criarEventosDoCalendario(
     const pessoaB = pessoasById.get(pairIds[1]);
     if (!pessoaA || !pessoaB) continue;
 
-    const pessoaFalecida = hasDeathDate(pessoaA.data_falecimento) || hasDeathDate(pessoaB.data_falecimento);
+    const pessoaFalecida = isPersonDeceased(pessoaA) || isPersonDeceased(pessoaB);
     const nomes = `${pessoaA.nome_completo} e ${pessoaB.nome_completo}`;
 
     eventos.push({

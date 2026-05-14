@@ -56,17 +56,20 @@ import {
   maskBirthDate,
   normalizeBirthDate,
   normalizeLocation,
+  normalizeLocationByMode,
   PersonFieldErrors,
   buildSocialProfilesFromPerson,
   createSocialProfile,
   syncFirstSocialProfileToPersonFields,
   validateEditablePersonForm,
   validateLocation,
+  validateLocationByMode,
 } from '../utils/personFields';
 import { getZodiacSignFromBirthDate } from '../utils/zodiac';
 
 const AVATAR_SIZE = 512;
 const LOCATION_FORMAT_HELPER = 'Use o formato Nome da Cidade/UF. Exemplo: São José dos Pinhais/PR.';
+const INTERNATIONAL_LOCATION_FORMAT_HELPER = 'Use o formato Nome da Cidade (País). Exemplo: Dublin (Irlanda).';
 
 type NotificationPreferenceKey =
   | 'receber_aniversarios'
@@ -481,8 +484,11 @@ export function MeusDados() {
   }, [form.nome_completo, pessoa?.nome_completo]);
 
   const previewLocation = useMemo(() => {
-    return normalizeLocation(String(form.local_atual || form.local_nascimento || '')) || 'Sem local informado';
-  }, [form.local_atual, form.local_nascimento]);
+    if (form.local_atual) return normalizeLocation(String(form.local_atual)) || 'Sem local informado';
+    return normalizeLocationByMode(String(form.local_nascimento || ''), {
+      international: form.local_nascimento_exterior === true,
+    }) || 'Sem local informado';
+  }, [form.local_atual, form.local_nascimento, form.local_nascimento_exterior]);
 
   const currentPhotoUrl = photoMarkedForRemoval ? '' : photoPreviewUrl || String(form.foto_principal_url ?? '');
   const zodiacSign = useMemo(
@@ -554,11 +560,15 @@ export function MeusDados() {
     if (field === 'nome_completo') updateField(field, formatPersonName(value));
     if (field === 'data_nascimento') updateField(field, normalizeBirthDate(value));
     if (field === 'local_nascimento' || field === 'local_atual') {
-      const normalizedLocation = normalizeLocation(value);
+      const normalizedLocation = field === 'local_nascimento'
+        ? normalizeLocationByMode(value, { international: form.local_nascimento_exterior === true })
+        : normalizeLocation(value);
       updateField(field, normalizedLocation);
       setErrors((current) => ({
         ...current,
-        [field]: validateLocation(normalizedLocation),
+        [field]: field === 'local_nascimento'
+          ? validateLocationByMode(normalizedLocation, { international: form.local_nascimento_exterior === true })
+          : validateLocation(normalizedLocation),
       }));
     }
   };
@@ -567,7 +577,9 @@ export function MeusDados() {
     const nextErrors = validateEditablePersonForm(form);
     const normalizedName = formatPersonName(String(form.nome_completo ?? ''));
     const normalizedBirthDate = normalizeBirthDate(String(form.data_nascimento ?? ''));
-    const normalizedBirthLocation = normalizeLocation(String(form.local_nascimento ?? ''));
+    const normalizedBirthLocation = normalizeLocationByMode(String(form.local_nascimento ?? ''), {
+      international: form.local_nascimento_exterior === true,
+    });
     const normalizedCurrentLocation = normalizeLocation(String(form.local_atual ?? ''));
 
     setErrors(nextErrors);
@@ -818,10 +830,17 @@ export function MeusDados() {
                 value={String(form.local_nascimento ?? '')}
                 onBlur={() => normalizeFieldOnBlur('local_nascimento')}
                 onChange={(e) => updateTextField('local_nascimento', e.target.value)}
-                placeholder="Cidade/UF"
+                placeholder={form.local_nascimento_exterior === true ? 'Cidade (País)' : 'Cidade/UF'}
                 aria-invalid={Boolean(errors.local_nascimento)}
               />
-              <p className="text-xs text-gray-500">{LOCATION_FORMAT_HELPER}</p>
+              <p className="text-xs text-gray-500">
+                {form.local_nascimento_exterior === true ? INTERNATIONAL_LOCATION_FORMAT_HELPER : LOCATION_FORMAT_HELPER}
+              </p>
+              <ToggleField
+                label="Nasci fora do Brasil"
+                checked={form.local_nascimento_exterior === true}
+                onCheckedChange={(checked) => updateField('local_nascimento_exterior', checked)}
+              />
             </Field>
             <Field label="Cidade de Residência" error={errors.local_atual}>
               <Input
@@ -833,6 +852,14 @@ export function MeusDados() {
               />
               <p className="text-xs text-gray-500">{LOCATION_FORMAT_HELPER}</p>
             </Field>
+            <div className="md:col-span-2">
+              <ToggleField
+                label="Pessoa falecida"
+                description="Marque mesmo que a data ou o local de falecimento sejam desconhecidos."
+                checked={form.falecido === true}
+                onCheckedChange={(checked) => updateField('falecido', checked)}
+              />
+            </div>
             <Field label="Telefone">
               <Input
                 value={String(form.telefone ?? '')}

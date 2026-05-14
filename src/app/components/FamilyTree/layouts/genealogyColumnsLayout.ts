@@ -11,7 +11,8 @@ import {
   TreeLayoutResult,
   getSortableBirthValue,
 } from '../types';
-import { DIRECT_FAMILY_TOKENS, hasDeathDate } from '../visualTokens';
+import { DIRECT_FAMILY_TOKENS } from '../visualTokens';
+import { isPersonDeceased } from '../../../utils/personFields';
 
 type GenerationKey = number | null;
 export type GenealogyMarriageStatus = 'active' | 'divorced' | 'widowed' | 'unknown';
@@ -228,7 +229,7 @@ export function getGenealogyMarriageStatus(
     return 'divorced';
   }
 
-  if (hasDeathDate(pessoaA.data_falecimento) || hasDeathDate(pessoaB.data_falecimento)) {
+  if (isPersonDeceased(pessoaA) || isPersonDeceased(pessoaB)) {
     return 'widowed';
   }
 

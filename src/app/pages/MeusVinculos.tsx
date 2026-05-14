@@ -33,6 +33,7 @@ import {
   UserPersonLinkRecord,
 } from '../services/memberProfileService';
 import { ArquivoHistorico, Pessoa, Relacionamento } from '../types';
+import { normalizeLocationByMode, validateLocationByMode } from '../utils/personFields';
 
 type RelationshipGroups = {
   pais: Pessoa[];
@@ -48,6 +49,7 @@ type AddRelativeForm = {
   nome_completo: string;
   data_nascimento: string;
   local_nascimento: string;
+  local_nascimento_exterior: boolean;
   parentRole: 'pai' | 'mae';
 };
 
@@ -83,7 +85,10 @@ function createLocalPerson(form: AddRelativeForm): Pessoa {
     id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     nome_completo: form.nome_completo.trim(),
     data_nascimento: form.data_nascimento.trim() || undefined,
-    local_nascimento: form.local_nascimento.trim() || undefined,
+    local_nascimento: normalizeLocationByMode(form.local_nascimento, {
+      international: form.local_nascimento_exterior,
+    }) || undefined,
+    local_nascimento_exterior: form.local_nascimento_exterior,
     humano_ou_pet: 'Humano',
   };
 }
@@ -218,6 +223,7 @@ export function MeusVinculos() {
     nome_completo: '',
     data_nascimento: '',
     local_nascimento: '',
+    local_nascimento_exterior: false,
     parentRole: 'pai',
   });
   const [localRelationshipRoles, setLocalRelationshipRoles] = useState<Record<string, 'pai' | 'mae'>>({});
@@ -335,18 +341,37 @@ export function MeusVinculos() {
 
   const openAddDialog = (group: RelationshipGroupKey, title: string) => {
     setAddDialog({ group, title });
-    setAddForm({ nome_completo: '', data_nascimento: '', local_nascimento: '', parentRole: 'pai' });
+    setAddForm({
+      nome_completo: '',
+      data_nascimento: '',
+      local_nascimento: '',
+      local_nascimento_exterior: false,
+      parentRole: 'pai',
+    });
   };
 
   const closeAddDialog = () => {
     setAddDialog(null);
-    setAddForm({ nome_completo: '', data_nascimento: '', local_nascimento: '', parentRole: 'pai' });
+    setAddForm({
+      nome_completo: '',
+      data_nascimento: '',
+      local_nascimento: '',
+      local_nascimento_exterior: false,
+      parentRole: 'pai',
+    });
   };
 
   const addRelative = () => {
     if (!addDialog) return;
     if (!addForm.nome_completo.trim()) {
       toast.error('Informe o nome completo do familiar.');
+      return;
+    }
+    const birthLocationError = validateLocationByMode(addForm.local_nascimento, {
+      international: addForm.local_nascimento_exterior,
+    });
+    if (birthLocationError) {
+      toast.error(birthLocationError);
       return;
     }
 
@@ -504,6 +529,7 @@ export function MeusVinculos() {
             nome_completo: person.nome_completo,
             data_nascimento: person.data_nascimento,
             local_nascimento: person.local_nascimento,
+            local_nascimento_exterior: person.local_nascimento_exterior,
             humano_ou_pet: 'Humano',
           });
 
@@ -806,8 +832,26 @@ export function MeusVinculos() {
                 id="relative-birth-place"
                 value={addForm.local_nascimento}
                 onChange={(event) => setAddForm((current) => ({ ...current, local_nascimento: event.target.value }))}
-                placeholder="Cidade/UF"
+                onBlur={() => setAddForm((current) => ({
+                  ...current,
+                  local_nascimento: normalizeLocationByMode(current.local_nascimento, {
+                    international: current.local_nascimento_exterior,
+                  }),
+                }))}
+                placeholder={addForm.local_nascimento_exterior ? 'Cidade (País)' : 'Cidade/UF'}
               />
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-gray-300"
+                  checked={addForm.local_nascimento_exterior}
+                  onChange={(event) => setAddForm((current) => ({
+                    ...current,
+                    local_nascimento_exterior: event.target.checked,
+                  }))}
+                />
+                <span>Nascimento fora do Brasil</span>
+              </label>
             </div>
           </div>
 

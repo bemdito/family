@@ -1,4 +1,4 @@
-import { EditableOwnPersonPayload } from '../services/memberProfileService';
+import type { EditableOwnPersonPayload } from '../services/memberProfileService';
 import { Pessoa } from '../types';
 import { getZodiacSignFromBirthDate } from './zodiac';
 
@@ -19,6 +19,7 @@ export const PERSON_FIELD_LABELS = {
   data_nascimento: 'Data de nascimento',
   signo: 'Signo',
   local_nascimento: 'Local de nascimento',
+  local_nascimento_exterior: 'Local de nascimento fora do Brasil',
   local_atual: 'Residência atual',
   foto_principal_url: 'Foto',
   minibio: 'Mini bio',
@@ -37,6 +38,8 @@ export const PERSON_FIELD_LABELS = {
   permitir_exibir_telefone: 'Exibir telefone',
   data_falecimento: 'Data de falecimento',
   local_falecimento: 'Local de falecimento',
+  local_falecimento_exterior: 'Local de falecimento fora do Brasil',
+  falecido: 'Pessoa falecida',
   humano_ou_pet: 'Tipo',
   geracao_sociologica: 'Geração sociológica',
   lado: 'Lado',
@@ -48,7 +51,9 @@ export const EDITABLE_OWN_PERSON_FIELDS: Array<keyof EditableOwnPersonPayload> =
   'nome_completo',
   'data_nascimento',
   'local_nascimento',
+  'local_nascimento_exterior',
   'local_atual',
+  'falecido',
   'minibio',
   'curiosidades',
   'telefone',
@@ -69,8 +74,10 @@ export function buildEditablePersonFormState(pessoa?: Pessoa | null): EditableOw
     nome_completo: pessoa?.nome_completo ?? '',
     data_nascimento: pessoa?.data_nascimento ?? '',
     local_nascimento: pessoa?.local_nascimento ?? '',
+    local_nascimento_exterior: pessoa?.local_nascimento_exterior ?? false,
     local_atual: pessoa?.local_atual ?? '',
     foto_principal_url: pessoa?.foto_principal_url ?? '',
+    falecido: pessoa?.falecido ?? Boolean(pessoa?.data_falecimento || pessoa?.local_falecimento),
     minibio: pessoa?.minibio ?? '',
     curiosidades: pessoa?.curiosidades ?? '',
     telefone: pessoa?.telefone ?? '',
@@ -159,7 +166,7 @@ export function formatPhone(value: string) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
-export function normalizeLocation(value: string) {
+export function normalizeBrazilianLocation(value: string) {
   const trimmed = value.trim().replace(/\s+/g, ' ');
   if (!trimmed) return '';
 
@@ -177,9 +184,33 @@ export function normalizeLocation(value: string) {
   return `${city}/${normalizedRegion}`;
 }
 
-export function validateLocation(value: string) {
+export function normalizeInternationalLocation(value: string) {
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return '';
+
+  const match = trimmed.match(/^(.+?)\s*\(([^()]+)\)$/);
+  if (!match) return titleCase(trimmed);
+
+  const city = titleCase(match[1]);
+  const country = titleCase(match[2]);
+  return `${city} (${country})`;
+}
+
+export function normalizeLocationByMode(value: string, options?: { international?: boolean }) {
+  return options?.international ? normalizeInternationalLocation(value) : normalizeBrazilianLocation(value);
+}
+
+export function normalizeLocation(value: string) {
+  return normalizeBrazilianLocation(value);
+}
+
+export function validateBrazilianLocation(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
+
+  if (/\(.+\)/.test(trimmed)) {
+    return 'Para locais no Brasil, use o formato Nome da Cidade/UF. Para exterior, marque a opção fora do Brasil.';
+  }
 
   const slashParts = trimmed.split('/');
   if (slashParts.length !== 2 || !slashParts[0].trim() || !slashParts[1].trim()) {
@@ -192,6 +223,38 @@ export function validateLocation(value: string) {
   }
 
   return undefined;
+}
+
+export function validateInternationalLocation(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  if (trimmed.includes('/')) {
+    return 'Para locais fora do Brasil, use o formato Nome da Cidade (País). Exemplo: Dublin (Irlanda).';
+  }
+
+  const match = trimmed.match(/^(.+?)\s*\(([^()]*)\)$/);
+  if (!match) {
+    return 'Use o formato Nome da Cidade (País). Exemplo: Dublin (Irlanda).';
+  }
+
+  if (!match[1].trim()) {
+    return 'Informe a cidade antes do país. Exemplo: Dublin (Irlanda).';
+  }
+
+  if (!match[2].trim()) {
+    return 'Informe o país entre parênteses. Exemplo: Dublin (Irlanda).';
+  }
+
+  return undefined;
+}
+
+export function validateLocationByMode(value: string, options?: { international?: boolean }) {
+  return options?.international ? validateInternationalLocation(value) : validateBrazilianLocation(value);
+}
+
+export function validateLocation(value: string) {
+  return validateBrazilianLocation(value);
 }
 
 export function getInitials(name: string) {
@@ -237,14 +300,29 @@ export function syncFirstSocialProfileToPersonFields<T extends { rede_social?: s
   };
 }
 
+export function isPersonDeceased(pessoa?: Pick<Pessoa, 'falecido' | 'data_falecimento' | 'local_falecimento'> | null) {
+  return Boolean(
+    pessoa?.falecido ||
+    String(pessoa?.data_falecimento ?? '').trim() ||
+    String(pessoa?.local_falecimento ?? '').trim()
+  );
+}
+
 export function cleanPersonPayload(form: EditableOwnPersonPayload): EditableOwnPersonPayload {
+  const hasDeathInfo = Boolean(
+    String((form as Record<string, unknown>).data_falecimento ?? '').trim() ||
+    String((form as Record<string, unknown>).local_falecimento ?? '').trim()
+  );
   const normalizedForm: EditableOwnPersonPayload = {
     ...form,
     nome_completo: formatPersonName(String(form.nome_completo ?? '')),
     data_nascimento: normalizeBirthDate(String(form.data_nascimento ?? '')),
-    local_nascimento: normalizeLocation(String(form.local_nascimento ?? '')),
+    local_nascimento: normalizeLocationByMode(String(form.local_nascimento ?? ''), {
+      international: form.local_nascimento_exterior === true,
+    }),
     local_atual: normalizeLocation(String(form.local_atual ?? '')),
     telefone: formatPhone(String(form.telefone ?? '')),
+    falecido: form.falecido === true || hasDeathInfo,
     permitir_exibir_instagram: form.permitir_exibir_rede_social !== false && form.permitir_exibir_instagram !== false,
     permitir_mensagens_whatsapp: form.permitir_mensagens_whatsapp !== false,
     permitir_exibir_data_nascimento: form.permitir_exibir_data_nascimento ?? true,
@@ -275,7 +353,9 @@ export function validateEditablePersonForm(form: EditableOwnPersonPayload): Pers
   const nextErrors: PersonFieldErrors = {};
   const normalizedName = formatPersonName(String(form.nome_completo ?? ''));
   const normalizedBirthDate = normalizeBirthDate(String(form.data_nascimento ?? ''));
-  const normalizedBirthLocation = normalizeLocation(String(form.local_nascimento ?? ''));
+  const normalizedBirthLocation = normalizeLocationByMode(String(form.local_nascimento ?? ''), {
+    international: form.local_nascimento_exterior === true,
+  });
   const normalizedCurrentLocation = normalizeLocation(String(form.local_atual ?? ''));
 
   if (!hasFirstAndLastName(normalizedName)) {
@@ -285,7 +365,9 @@ export function validateEditablePersonForm(form: EditableOwnPersonPayload): Pers
   const birthDateError = validateBirthDate(normalizedBirthDate);
   if (birthDateError) nextErrors.data_nascimento = birthDateError;
 
-  const birthLocationError = validateLocation(normalizedBirthLocation);
+  const birthLocationError = validateLocationByMode(normalizedBirthLocation, {
+    international: form.local_nascimento_exterior === true,
+  });
   if (birthLocationError) nextErrors.local_nascimento = birthLocationError;
 
   const currentLocationError = validateLocation(normalizedCurrentLocation);
