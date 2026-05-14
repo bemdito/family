@@ -28,6 +28,22 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function normalizeOptional(value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
+  return String(value);
+}
+
+function hasArquivoChanged(current: ArquivoHistorico, next: ArquivoHistorico, nextOrder: number) {
+  return (
+    current.tipo !== next.tipo ||
+    current.url !== next.url ||
+    current.titulo !== next.titulo ||
+    normalizeOptional(current.descricao) !== normalizeOptional(next.descricao) ||
+    normalizeOptional(current.ano) !== normalizeOptional(next.ano) ||
+    (current.ordem ?? 0) !== nextOrder
+  );
+}
+
 export async function listarArquivosHistoricosPorPessoa(pessoaId: string): Promise<ArquivoHistorico[]> {
   const { data, error } = await supabase
     .from('arquivos_historicos')
@@ -48,6 +64,7 @@ export async function substituirArquivosHistoricosDaPessoa(
   arquivos: ArquivoHistorico[]
 ): Promise<ArquivoHistorico[]> {
   const arquivosExistentes = await listarArquivosHistoricosPorPessoa(pessoaId);
+  const arquivosExistentesPorId = new Map(arquivosExistentes.map((arquivo) => [arquivo.id, arquivo]));
   const idsMantidos = new Set(arquivos.filter((arquivo) => isUuid(arquivo.id)).map((arquivo) => arquivo.id));
   const arquivosParaRemover = arquivosExistentes.filter((arquivo) => !idsMantidos.has(arquivo.id));
   const idsParaRemover = arquivosExistentes
@@ -85,12 +102,17 @@ export async function substituirArquivosHistoricosDaPessoa(
       tipo: arquivo.tipo,
       url: arquivo.url,
       titulo: arquivo.titulo,
-      descricao: arquivo.descricao ?? null,
-      ano: arquivo.ano ?? null,
+      descricao: normalizeOptional(arquivo.descricao),
+      ano: normalizeOptional(arquivo.ano),
       ordem: arquivo.ordem ?? index,
     };
 
     if (isUuid(arquivo.id)) {
+      const arquivoExistente = arquivosExistentesPorId.get(arquivo.id);
+      if (arquivoExistente && !hasArquivoChanged(arquivoExistente, arquivo, payload.ordem)) {
+        continue;
+      }
+
       const { error } = await supabase
         .from('arquivos_historicos')
         .update(payload)

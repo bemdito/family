@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { ArquivoHistorico } from '../types';
-import { Upload, X, FileText, Eye } from 'lucide-react';
+import { ArrowDown, ArrowUp, Upload, X, FileText, Eye } from 'lucide-react';
 import { uploadHistoricalFile } from '../services/storageService';
 
 const ACCEPTED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -20,6 +20,7 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = fa
   const [novoArquivo, setNovoArquivo] = useState({
     titulo: '',
     descricao: '',
+    ano: '',
     tipo: 'imagem' as 'imagem' | 'pdf',
     url: ''
   });
@@ -65,16 +66,35 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = fa
       tipo: novoArquivo.tipo,
       url: novoArquivo.url,
       titulo: novoArquivo.titulo,
-      descricao: novoArquivo.descricao || undefined
+      descricao: novoArquivo.descricao || undefined,
+      ano: novoArquivo.ano || undefined,
+      ordem: arquivos.length,
     };
 
     onChange([...arquivos, arquivo]);
-    setNovoArquivo({ titulo: '', descricao: '', tipo: 'imagem', url: '' });
+    setNovoArquivo({ titulo: '', descricao: '', ano: '', tipo: 'imagem', url: '' });
     setIsAddingFile(false);
   };
 
   const handleRemoveArquivo = (id: string) => {
     onChange(arquivos.filter(a => a.id !== id));
+  };
+
+  const handleUpdateArquivo = (id: string, field: 'titulo' | 'descricao' | 'ano', value: string) => {
+    onChange(arquivos.map((arquivo) => (
+      arquivo.id === id ? { ...arquivo, [field]: value } : arquivo
+    )));
+  };
+
+  const handleMoveArquivo = (id: string, direction: -1 | 1) => {
+    const currentIndex = arquivos.findIndex((arquivo) => arquivo.id === id);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= arquivos.length) return;
+
+    const nextArquivos = [...arquivos];
+    const [item] = nextArquivos.splice(currentIndex, 1);
+    nextArquivos.splice(nextIndex, 0, item);
+    onChange(nextArquivos.map((arquivo, index) => ({ ...arquivo, ordem: index })));
   };
 
   const handleViewFile = (arquivo: ArquivoHistorico) => {
@@ -151,6 +171,18 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = fa
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ano
+                </label>
+                <Input
+                  type="text"
+                  value={novoArquivo.ano}
+                  onChange={(e) => setNovoArquivo(prev => ({ ...prev, ano: e.target.value }))}
+                  placeholder="Ex: 1950"
+                />
+              </div>
+
               <div className="flex gap-2 justify-end">
                 <Button
                   type="button"
@@ -158,7 +190,7 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = fa
                   size="sm"
                   onClick={() => {
                     setIsAddingFile(false);
-                    setNovoArquivo({ titulo: '', descricao: '', tipo: 'imagem', url: '' });
+                    setNovoArquivo({ titulo: '', descricao: '', ano: '', tipo: 'imagem', url: '' });
                   }}
                   disabled={isUploadingFile}
                 >
@@ -182,7 +214,7 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = fa
             </p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {arquivos.map((arquivo) => (
+              {arquivos.map((arquivo, index) => (
                 <div
                   key={arquivo.id}
                   className="border border-gray-200 rounded-lg p-3 hover:border-gray-300 transition-colors"
@@ -205,13 +237,42 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = fa
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-sm text-gray-900 truncate">
-                        {arquivo.titulo}
-                      </h4>
-                      {arquivo.descricao && (
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                          {arquivo.descricao}
-                        </p>
+                      {readOnly ? (
+                        <>
+                          <h4 className="font-medium text-sm text-gray-900 truncate">
+                            {arquivo.titulo}
+                          </h4>
+                          {arquivo.ano && (
+                            <p className="text-xs text-gray-500 mt-1">{arquivo.ano}</p>
+                          )}
+                          {arquivo.descricao && (
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                              {arquivo.descricao}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <div className="space-y-2">
+                          <Input
+                            value={arquivo.titulo}
+                            onChange={(event) => handleUpdateArquivo(arquivo.id, 'titulo', event.target.value)}
+                            placeholder="Título"
+                            className="h-8 bg-white text-sm"
+                          />
+                          <Input
+                            value={arquivo.ano ?? ''}
+                            onChange={(event) => handleUpdateArquivo(arquivo.id, 'ano', event.target.value)}
+                            placeholder="Ano"
+                            className="h-8 bg-white text-sm"
+                          />
+                          <textarea
+                            value={arquivo.descricao ?? ''}
+                            onChange={(event) => handleUpdateArquivo(arquivo.id, 'descricao', event.target.value)}
+                            rows={2}
+                            className="flex w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                            placeholder="Descrição"
+                          />
+                        </div>
                       )}
                       <div className="flex gap-2 mt-2">
                         <button
@@ -223,14 +284,34 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = fa
                           Visualizar
                         </button>
                         {!readOnly && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveArquivo(arquivo.id)}
-                            className="text-xs text-red-600 hover:underline flex items-center gap-1"
-                          >
-                            <X className="w-3 h-3" />
-                            Remover
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveArquivo(arquivo.id, -1)}
+                              disabled={index === 0}
+                              className="text-xs text-gray-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-300 flex items-center gap-1"
+                            >
+                              <ArrowUp className="w-3 h-3" />
+                              Subir
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveArquivo(arquivo.id, 1)}
+                              disabled={index === arquivos.length - 1}
+                              className="text-xs text-gray-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-300 flex items-center gap-1"
+                            >
+                              <ArrowDown className="w-3 h-3" />
+                              Descer
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveArquivo(arquivo.id)}
+                              className="text-xs text-red-600 hover:underline flex items-center gap-1"
+                            >
+                              <X className="w-3 h-3" />
+                              Remover
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>

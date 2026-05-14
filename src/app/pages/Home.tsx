@@ -1225,6 +1225,7 @@ export function Home() {
         open={!!connectionTarget}
         sourcePerson={connectionTarget}
         pessoas={pessoas}
+        isAdmin={isAdmin}
         onClose={() => setConnectionTarget(null)}
         onSubmit={handleAddConnectionSubmit}
       />

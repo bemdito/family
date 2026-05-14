@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { Camera, ImagePlus, Info, Plus, Save, Trash2, UploadCloud, UserCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
+import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
 import {
   Dialog,
   DialogContent,
@@ -37,7 +38,11 @@ import {
   salvarPreferenciasNotificacao,
 } from '../services/userEngagementService';
 import { uploadPersonAvatarFile } from '../services/storageService';
-import { Pessoa, PreferenciaNotificacao } from '../types';
+import {
+  listarArquivosHistoricosPorPessoa,
+  substituirArquivosHistoricosDaPessoa,
+} from '../services/arquivosHistoricosService';
+import { ArquivoHistorico, Pessoa, PreferenciaNotificacao } from '../types';
 import {
   buildEditablePersonFormState,
   cleanPersonPayload,
@@ -307,6 +312,7 @@ export function MeusDados() {
   const [photoMarkedForRemoval, setPhotoMarkedForRemoval] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [archives, setArchives] = useState<ArquivoHistorico[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -331,6 +337,23 @@ export function MeusDados() {
       const shouldPreserveDraft = hasInitializedFormRef.current && isDirtyRef.current && samePessoa;
 
       setLink(data);
+
+      if (nextPessoaId) {
+        try {
+          const nextArchives = await listarArquivosHistoricosPorPessoa(nextPessoaId);
+          if (mounted) setArchives(nextArchives);
+        } catch (archivesError) {
+          if (mounted) {
+            toast.error(
+              archivesError instanceof Error
+                ? archivesError.message
+                : 'Não foi possível carregar arquivos históricos.',
+            );
+          }
+        }
+      } else {
+        setArchives([]);
+      }
 
       if (!shouldPreserveDraft) {
         const draftKey = user.id && nextPessoaId ? getDraftKey(user.id, nextPessoaId) : null;
@@ -709,6 +732,19 @@ export function MeusDados() {
       return;
     }
 
+    try {
+      const savedArchives = await substituirArquivosHistoricosDaPessoa(pessoa.id, archives);
+      setArchives(savedArchives);
+    } catch (archivesError) {
+      setSaving(false);
+      toast.error(
+        archivesError instanceof Error
+          ? `Dados pessoais salvos, mas não foi possível salvar arquivos históricos: ${archivesError.message}`
+          : 'Dados pessoais salvos, mas não foi possível salvar arquivos históricos.',
+      );
+      return;
+    }
+
     const { error: profileError } = await ensureMemberProfile(user.id, {
       nome_exibicao: updatedPessoa?.nome_completo ?? String(payload.nome_completo ?? ''),
       avatar_url: photoMarkedForRemoval ? null : String(updatedPessoa?.foto_principal_url ?? form.foto_principal_url ?? '') || null,
@@ -999,6 +1035,19 @@ export function MeusDados() {
               onCheckedChange={(checked) => updateField('permitir_mensagens_whatsapp', checked)}
             />
           </div>
+
+          {pessoa?.id && (
+            <div className="mt-6">
+              <ArquivosHistoricos
+                arquivos={archives}
+                onChange={(nextArchives) => {
+                  markFormDirty();
+                  setArchives(nextArchives);
+                }}
+                pessoaId={pessoa.id}
+              />
+            </div>
+          )}
 
           <section className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="mb-4">

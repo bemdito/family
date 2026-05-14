@@ -222,6 +222,38 @@ function applyFilters(query: any, filters: RelationshipChangeRequestFilters = {}
   return nextQuery.limit(filters.limit ?? 100);
 }
 
+function hasSamePendingRequestCombination(
+  request: RelationshipChangeRequest,
+  input: CreateRelationshipChangeRequestInput
+) {
+  if (request.status !== 'pending') return false;
+  if (request.action !== input.action) return false;
+  if (request.relationship_type !== input.relationship_type) return false;
+  if ((request.relationship_subtype ?? null) !== (input.relationship_subtype ?? null)) return false;
+
+  if (input.relationship_id || request.relationship_id) {
+    return (request.relationship_id ?? null) === (input.relationship_id ?? null);
+  }
+
+  const targetId = input.target_pessoa_id ?? null;
+  const relatedId = input.related_pessoa_id ?? null;
+
+  if (!targetId || !relatedId || !request.target_pessoa_id || !request.related_pessoa_id) {
+    return false;
+  }
+
+  const exactMatch = request.target_pessoa_id === targetId && request.related_pessoa_id === relatedId;
+  if (exactMatch) return true;
+
+  const symmetricRelationship = input.relationship_type === 'conjuge' || input.relationship_type === 'irmao';
+  return symmetricRelationship && request.target_pessoa_id === relatedId && request.related_pessoa_id === targetId;
+}
+
+export async function findPendingDuplicateRelationshipChangeRequest(input: CreateRelationshipChangeRequestInput) {
+  const requests = await listOwnRelationshipChangeRequests();
+  return requests.find((request) => hasSamePendingRequestCombination(request, input));
+}
+
 export async function createRelationshipChangeRequest(input: CreateRelationshipChangeRequestInput) {
   const user = await getCurrentUser();
   const requesterPessoaId = await resolveRequesterPessoaId(user.id, input.requester_pessoa_id);

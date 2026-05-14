@@ -20,14 +20,19 @@ import {
   listarArquivosHistoricosPorPessoa,
   substituirArquivosHistoricosDaPessoa,
 } from '../services/arquivosHistoricosService';
-import { obterRelacionamentosDaPessoa } from '../services/dataService';
+import { adicionarPessoa, obterRelacionamentosDaPessoa, obterTodosRelacionamentos } from '../services/dataService';
+import {
+  CreateRelationshipChangeRequestInput,
+  createRelationshipChangeRequest,
+  findPendingDuplicateRelationshipChangeRequest,
+} from '../services/relationshipChangeRequestService';
 import {
   confirmOwnLinkedPersonData,
   getPrimaryLinkedPersonWithPessoa,
   resolveFirstAccessLinkForUser,
   UserPersonLinkRecord,
 } from '../services/memberProfileService';
-import { ArquivoHistorico, Pessoa } from '../types';
+import { ArquivoHistorico, Pessoa, Relacionamento } from '../types';
 
 type RelationshipGroups = {
   pais: Pessoa[];
@@ -43,6 +48,7 @@ type AddRelativeForm = {
   nome_completo: string;
   data_nascimento: string;
   local_nascimento: string;
+  parentRole: 'pai' | 'mae';
 };
 
 type AddDialogState = {
@@ -72,6 +78,22 @@ function createLocalPerson(form: AddRelativeForm): Pessoa {
     local_nascimento: form.local_nascimento.trim() || undefined,
     humano_ou_pet: 'Humano',
   };
+}
+
+function matchesRelationshipPair(rel: Relacionamento, originId: string, destinationId: string) {
+  return rel.pessoa_origem_id === originId && rel.pessoa_destino_id === destinationId;
+}
+
+function findRelationshipBetween(
+  relacionamentos: Relacionamento[],
+  baseId: string,
+  relatedId: string,
+  acceptedTypes: Relacionamento['tipo_relacionamento'][]
+) {
+  return relacionamentos.find((rel) => (
+    acceptedTypes.includes(rel.tipo_relacionamento) &&
+    (matchesRelationshipPair(rel, baseId, relatedId) || matchesRelationshipPair(rel, relatedId, baseId))
+  ));
 }
 
 function RelationSection({
@@ -133,13 +155,18 @@ export function MeusVinculos() {
   const { user } = useAuth();
   const [link, setLink] = useState<(UserPersonLinkRecord & { pessoa: Pessoa | null }) | null>(null);
   const [relationships, setRelationships] = useState<RelationshipGroups>(EMPTY_GROUPS);
+  const [initialRelationships, setInitialRelationships] = useState<RelationshipGroups>(EMPTY_GROUPS);
+  const [allRelacionamentos, setAllRelacionamentos] = useState<Relacionamento[]>([]);
   const [marriageDetails, setMarriageDetails] = useState<MarriageDetails>({});
+  const [initialMarriageDetails, setInitialMarriageDetails] = useState<MarriageDetails>({});
   const [addDialog, setAddDialog] = useState<AddDialogState>(null);
   const [addForm, setAddForm] = useState<AddRelativeForm>({
     nome_completo: '',
     data_nascimento: '',
     local_nascimento: '',
+    parentRole: 'pai',
   });
+  const [localRelationshipRoles, setLocalRelationshipRoles] = useState<Record<string, 'pai' | 'mae'>>({});
   const [hasLocalRelationshipChanges, setHasLocalRelationshipChanges] = useState(false);
   const [archives, setArchives] = useState<ArquivoHistorico[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,13 +175,23 @@ export function MeusVinculos() {
   const pessoa = link?.pessoa;
 
   async function reloadRelationships(pessoaId: string) {
-    const nextRelationships = await obterRelacionamentosDaPessoa(pessoaId);
+    const [nextRelationships, nextAllRelationships] = await Promise.all([
+      obterRelacionamentosDaPessoa(pessoaId),
+      obterTodosRelacionamentos(),
+    ]);
+    setAllRelacionamentos(nextAllRelationships);
     setRelationships(nextRelationships);
-    setMarriageDetails((current) => {
-      const next = { ...current };
+    setInitialRelationships(nextRelationships);
+    setMarriageDetails(() => {
+      const next: MarriageDetails = {};
       uniquePeople(nextRelationships.conjuges).forEach((person) => {
-        next[person.id] = next[person.id] ?? { data_casamento: '', local_casamento: '' };
+        const rel = findRelationshipBetween(nextAllRelationships, pessoaId, person.id, ['conjuge']);
+        next[person.id] = {
+          data_casamento: String(rel?.data_casamento ?? ''),
+          local_casamento: String(rel?.local_casamento ?? ''),
+        };
       });
+      setInitialMarriageDetails(next);
       return next;
     });
   }
@@ -197,12 +234,12 @@ export function MeusVinculos() {
 
   const openAddDialog = (group: RelationshipGroupKey, title: string) => {
     setAddDialog({ group, title });
-    setAddForm({ nome_completo: '', data_nascimento: '', local_nascimento: '' });
+    setAddForm({ nome_completo: '', data_nascimento: '', local_nascimento: '', parentRole: 'pai' });
   };
 
   const closeAddDialog = () => {
     setAddDialog(null);
-    setAddForm({ nome_completo: '', data_nascimento: '', local_nascimento: '' });
+    setAddForm({ nome_completo: '', data_nascimento: '', local_nascimento: '', parentRole: 'pai' });
   };
 
   const addRelative = () => {
@@ -214,10 +251,22 @@ export function MeusVinculos() {
 
     const person = createLocalPerson(addForm);
 
-    // TODO: persistir a nova pessoa e o vínculo em Supabase quando o fluxo de revisão tiver backend definitivo.
-    setRelationships((current) => ({
+    setRelationships((current) => {
+      if (addDialog.group === 'pais' && addForm.parentRole === 'mae') {
+        return {
+          ...current,
+          maes: uniquePeople([...current.maes, person]),
+        };
+      }
+
+      return {
+        ...current,
+        [addDialog.group]: uniquePeople([...current[addDialog.group], person]),
+      };
+    });
+    setLocalRelationshipRoles((current) => ({
       ...current,
-      [addDialog.group]: uniquePeople([...current[addDialog.group], person]),
+      [person.id]: addForm.parentRole,
     }));
 
     if (addDialog.group === 'conjuges') {
@@ -262,7 +311,6 @@ export function MeusVinculos() {
     field: 'data_casamento' | 'local_casamento',
     value: string,
   ) => {
-    // TODO: persistir data_casamento/local_casamento no relacionamento de cônjuge quando houver escrita nessa revisão.
     setMarriageDetails((current) => ({
       ...current,
       [spouseId]: {
@@ -272,6 +320,136 @@ export function MeusVinculos() {
       },
     }));
     setHasLocalRelationshipChanges(true);
+  };
+
+  const getGroupPeople = (groups: RelationshipGroups, group: RelationshipGroupKey) => {
+    if (group === 'pais') return uniquePeople([...groups.pais, ...groups.maes]);
+    return uniquePeople(groups[group]);
+  };
+
+  const getRelationshipTypeForGroup = (group: RelationshipGroupKey, person: Pessoa): Relacionamento['tipo_relacionamento'] => {
+    if (group === 'pais') {
+      return relationships.maes.some((mae) => mae.id === person.id) ? 'mae' : 'pai';
+    }
+    if (group === 'filhos') return localRelationshipRoles[person.id] ?? 'pai';
+    if (group === 'conjuges') return 'conjuge';
+    return 'irmao';
+  };
+
+  const getRelationshipInputForGroup = (
+    action: CreateRelationshipChangeRequestInput['action'],
+    group: RelationshipGroupKey,
+    person: Pessoa,
+    relationshipId?: string,
+    changes?: Partial<Relacionamento>,
+    existingRelationship?: Relacionamento
+  ): CreateRelationshipChangeRequestInput => {
+    const relationshipType = existingRelationship?.tipo_relacionamento ?? getRelationshipTypeForGroup(group, person);
+    const details = group === 'conjuges'
+      ? {
+          data_casamento: marriageDetails[person.id]?.data_casamento || null,
+          local_casamento: marriageDetails[person.id]?.local_casamento || null,
+          ativo: true,
+        }
+      : { ativo: true };
+
+    return {
+      requester_pessoa_id: pessoa?.id,
+      action,
+      target_pessoa_id: group === 'filhos' ? person.id : pessoa?.id,
+      related_pessoa_id: group === 'filhos' ? pessoa?.id : person.id,
+      relationship_id: relationshipId,
+      relationship_type: relationshipType,
+      relationship_subtype: existingRelationship?.subtipo_relacionamento ?? (group === 'conjuges' ? 'casamento' : 'sangue'),
+      details: group === 'filhos' ? { ...details, inverseTipoForFilho: relationshipType as 'pai' | 'mae' } : details,
+      changes,
+    };
+  };
+
+  const createPendingRelationshipRequest = async (input: CreateRelationshipChangeRequestInput) => {
+    const duplicate = await findPendingDuplicateRelationshipChangeRequest(input);
+    if (duplicate) return false;
+    await createRelationshipChangeRequest(input);
+    return true;
+  };
+
+  const submitRelationshipRequests = async () => {
+    if (!pessoa?.id || !hasLocalRelationshipChanges) {
+      return { created: 0, skipped: 0 };
+    }
+
+    let created = 0;
+    let skipped = 0;
+    const groups: RelationshipGroupKey[] = ['pais', 'filhos', 'conjuges', 'irmaos'];
+
+    for (const group of groups) {
+      const initialPeople = getGroupPeople(initialRelationships, group);
+      const currentPeople = getGroupPeople(relationships, group);
+      const initialIds = new Set(initialPeople.map((person) => person.id));
+      const currentIds = new Set(currentPeople.map((person) => person.id));
+
+      for (const person of currentPeople.filter((currentPerson) => !initialIds.has(currentPerson.id))) {
+        const requestInput = getRelationshipInputForGroup('create', group, person);
+        if (person.id.startsWith('local-')) {
+          const createdPerson = await adicionarPessoa({
+            nome_completo: person.nome_completo,
+            data_nascimento: person.data_nascimento,
+            local_nascimento: person.local_nascimento,
+            humano_ou_pet: 'Humano',
+          });
+
+          if (!createdPerson) {
+            throw new Error(`Não foi possível cadastrar ${person.nome_completo} para solicitar o vínculo.`);
+          }
+          if (group === 'filhos') {
+            requestInput.target_pessoa_id = createdPerson.id;
+          } else {
+            requestInput.related_pessoa_id = createdPerson.id;
+          }
+        }
+
+        const wasCreated = await createPendingRelationshipRequest(requestInput);
+        if (wasCreated) created += 1;
+        else skipped += 1;
+      }
+
+      for (const person of initialPeople.filter((initialPerson) => !currentIds.has(initialPerson.id))) {
+        const acceptedTypes: Relacionamento['tipo_relacionamento'][] = group === 'pais' || group === 'filhos'
+          ? ['pai', 'mae', 'filho']
+          : [group === 'conjuges' ? 'conjuge' : 'irmao'];
+        const rel = findRelationshipBetween(allRelacionamentos, pessoa.id, person.id, acceptedTypes);
+        if (!rel) continue;
+
+        const wasCreated = await createPendingRelationshipRequest(getRelationshipInputForGroup('delete', group, person, rel.id, undefined, rel));
+        if (wasCreated) created += 1;
+        else skipped += 1;
+      }
+    }
+
+    for (const spouse of getGroupPeople(relationships, 'conjuges')) {
+      if (!getGroupPeople(initialRelationships, 'conjuges').some((person) => person.id === spouse.id)) continue;
+
+      const initialDetails = initialMarriageDetails[spouse.id] ?? { data_casamento: '', local_casamento: '' };
+      const currentDetails = marriageDetails[spouse.id] ?? { data_casamento: '', local_casamento: '' };
+      if (
+        initialDetails.data_casamento === currentDetails.data_casamento &&
+        initialDetails.local_casamento === currentDetails.local_casamento
+      ) {
+        continue;
+      }
+
+      const rel = findRelationshipBetween(allRelacionamentos, pessoa.id, spouse.id, ['conjuge']);
+      if (!rel) continue;
+
+      const wasCreated = await createPendingRelationshipRequest(getRelationshipInputForGroup('update', 'conjuges', spouse, rel.id, {
+        data_casamento: currentDetails.data_casamento,
+        local_casamento: currentDetails.local_casamento,
+      }, rel));
+      if (wasCreated) created += 1;
+      else skipped += 1;
+    }
+
+    return { created, skipped };
   };
 
   const handleFinish = async () => {
@@ -291,15 +469,32 @@ export function MeusVinculos() {
     }
 
     const { error: confirmError } = await confirmOwnLinkedPersonData(link.id);
-    setFinishing(false);
 
     if (confirmError) {
+      setFinishing(false);
       toast.error(confirmError);
       return;
     }
 
-    if (hasLocalRelationshipChanges) {
-      toast.info('Correções registradas para revisão. A persistência definitiva será implementada em seguida.');
+    let requestSummary = { created: 0, skipped: 0 };
+
+    try {
+      requestSummary = await submitRelationshipRequests();
+    } catch (error) {
+      setFinishing(false);
+      toast.error(error instanceof Error ? error.message : 'Erro ao enviar solicitações de vínculo.');
+      return;
+    }
+
+    setFinishing(false);
+
+    if (requestSummary.created > 0) {
+      const duplicateText = requestSummary.skipped > 0
+        ? ` ${requestSummary.skipped} solicitação já estava pendente.`
+        : '';
+      toast.success(`${requestSummary.created} solicitação(ões) enviada(s) para revisão dos administradores.${duplicateText}`);
+    } else if (requestSummary.skipped > 0) {
+      toast.info('As solicitações desses vínculos já estavam pendentes para revisão.');
     } else {
       toast.success('Vínculos confirmados.');
     }
@@ -428,7 +623,7 @@ export function MeusVinculos() {
 
           <div className="mt-5 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
             <p className="font-medium text-gray-900">Confirmação</p>
-            <p className="mt-1">Ao concluir, seus dados ficam marcados como confirmados e a árvore principal é liberada.</p>
+            <p className="mt-1">Ao concluir, seus dados ficam confirmados e alterações de vínculos são enviadas aos administradores.</p>
           </div>
 
           <Button className="mt-5 w-full" onClick={handleFinish} disabled={finishing}>
@@ -447,13 +642,32 @@ export function MeusVinculos() {
       <Dialog open={Boolean(addDialog)} onOpenChange={(open) => (!open ? closeAddDialog() : undefined)}>
         <DialogContent className="bg-white">
           <DialogHeader>
-            <DialogTitle>{addDialog?.title ?? 'Adicionar familiar'}</DialogTitle>
+            <DialogTitle>{addDialog?.title ?? 'Solicitar familiar'}</DialogTitle>
             <DialogDescription>
-              Esta correção ficará registrada localmente nesta revisão até a persistência definitiva ser implementada.
+              A solicitação será enviada para revisão dos administradores ao finalizar a confirmação.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4">
+            {(addDialog?.group === 'pais' || addDialog?.group === 'filhos') && (
+              <div className="space-y-2">
+                <Label htmlFor="relative-parent-role">
+                  {addDialog.group === 'pais' ? 'Este familiar é' : 'Meu papel em relação ao filho'}
+                </Label>
+                <select
+                  id="relative-parent-role"
+                  value={addForm.parentRole}
+                  onChange={(event) => setAddForm((current) => ({
+                    ...current,
+                    parentRole: event.target.value as 'pai' | 'mae',
+                  }))}
+                  className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                >
+                  <option value="pai">{addDialog.group === 'pais' ? 'Pai' : 'Sou pai'}</option>
+                  <option value="mae">{addDialog.group === 'pais' ? 'Mãe' : 'Sou mãe'}</option>
+                </select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="relative-name">Nome completo</Label>
               <Input
@@ -489,7 +703,7 @@ export function MeusVinculos() {
             </Button>
             <Button type="button" onClick={addRelative}>
               <Plus className="mr-2 h-4 w-4" />
-              Adicionar
+              Solicitar vínculo
             </Button>
           </DialogFooter>
         </DialogContent>

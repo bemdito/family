@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
 import { AppLink as Link } from '../components/AppLink';
+import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
 import {
   ArrowLeft,
   Bell,
@@ -46,6 +47,11 @@ import {
   obterTodosRelacionamentos,
 } from '../services/dataService';
 import {
+  CreateRelationshipChangeRequestInput,
+  createRelationshipChangeRequest,
+  findPendingDuplicateRelationshipChangeRequest,
+} from '../services/relationshipChangeRequestService';
+import {
   buildMemberTreeSummary,
   filterPeopleByMemberScope,
 } from '../services/memberTreeService';
@@ -62,7 +68,12 @@ import {
   salvarPreferenciasNotificacao,
 } from '../services/userEngagementService';
 import { uploadPersonAvatarFile } from '../services/storageService';
-import { Pessoa, PreferenciaNotificacao, Relacionamento } from '../types';
+import { isAdminUser } from '../services/permissionService';
+import {
+  listarArquivosHistoricosPorPessoa,
+  substituirArquivosHistoricosDaPessoa,
+} from '../services/arquivosHistoricosService';
+import { ArquivoHistorico, Pessoa, PreferenciaNotificacao, Relacionamento } from '../types';
 import {
   buildEditablePersonFormState,
   cleanPersonPayload,
@@ -446,6 +457,8 @@ export function MinhaArvore() {
   const [relationshipRemoving, setRelationshipRemoving] = useState<string | null>(null);
   const [marriageForms, setMarriageForms] = useState<MarriageFormState>({});
   const [marriageSaving, setMarriageSaving] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [archives, setArchives] = useState<ArquivoHistorico[]>([]);
 
   useEffect(() => {
     const carregar = async () => {
@@ -466,6 +479,7 @@ export function MinhaArvore() {
     const carregarVinculo = async () => {
       if (!user) {
         setLinkLoading(false);
+        setIsAdmin(false);
         return;
       }
 
@@ -483,6 +497,30 @@ export function MinhaArvore() {
     };
 
     carregarVinculo();
+  }, [user]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadAdminStatus() {
+      if (!user) {
+        setIsAdmin(false);
+        return;
+      }
+
+      const { isAdmin: nextIsAdmin, error } = await isAdminUser(user);
+      if (!mounted) return;
+      if (error) {
+        console.error('[MinhaArvore] Erro ao verificar permissão administrativa:', error);
+      }
+      setIsAdmin(nextIsAdmin);
+    }
+
+    loadAdminStatus();
+
+    return () => {
+      mounted = false;
+    };
   }, [user]);
 
   const pessoaBase = useMemo(() => {
@@ -587,6 +625,32 @@ export function MinhaArvore() {
     });
     setCroppedPhotoBlob(null);
   }, [pessoaBase, user?.id]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadArchives() {
+      if (!pessoaBase?.id) {
+        setArchives([]);
+        return;
+      }
+
+      try {
+        const nextArchives = await listarArquivosHistoricosPorPessoa(pessoaBase.id);
+        if (mounted) setArchives(nextArchives);
+      } catch (error) {
+        if (mounted) {
+          toast.error(error instanceof Error ? error.message : 'Não foi possível carregar arquivos históricos.');
+        }
+      }
+    }
+
+    loadArchives();
+
+    return () => {
+      mounted = false;
+    };
+  }, [pessoaBase?.id]);
 
   useEffect(() => {
     if (!pessoaBase) return;
@@ -968,6 +1032,19 @@ export function MinhaArvore() {
     setPhotoMarkedForRemoval(false);
     setCroppedPhotoBlob(null);
 
+    try {
+      const savedArchives = await substituirArquivosHistoricosDaPessoa(pessoaBase.id, archives);
+      setArchives(savedArchives);
+    } catch (archivesError) {
+      setSaving(false);
+      toast.error(
+        archivesError instanceof Error
+          ? `Dados pessoais salvos, mas não foi possível salvar arquivos históricos: ${archivesError.message}`
+          : 'Dados pessoais salvos, mas não foi possível salvar arquivos históricos.',
+      );
+      return;
+    }
+
     const { error: profileError } = await ensureMemberProfile(user.id, {
       nome_exibicao: updatedPessoa.nome_completo ?? String(payload.nome_completo ?? ''),
       avatar_url: String(updatedPessoa.foto_principal_url ?? '') || null,
@@ -1094,6 +1171,42 @@ export function MinhaArvore() {
     } satisfies Omit<Relacionamento, 'id'>;
   };
 
+  const submitRelationshipChangeRequest = async (input: CreateRelationshipChangeRequestInput) => {
+    const existingRequest = await findPendingDuplicateRelationshipChangeRequest(input);
+    if (existingRequest) {
+      toast.info('Já existe uma solicitação pendente para este vínculo.');
+      return false;
+    }
+
+    await createRelationshipChangeRequest(input);
+    toast.success('Solicitação enviada para revisão dos administradores.');
+    return true;
+  };
+
+  const getRelationshipRequestInput = (
+    action: CreateRelationshipChangeRequestInput['action'],
+    relacionamento: Omit<Relacionamento, 'id'>,
+    options: { relationshipId?: string; inverseTipoForFilho?: ParentRole; changes?: Partial<Relacionamento> } = {}
+  ): CreateRelationshipChangeRequestInput => ({
+    requester_pessoa_id: pessoaBase?.id,
+    action,
+    target_pessoa_id: relacionamento.pessoa_origem_id,
+    related_pessoa_id: relacionamento.pessoa_destino_id,
+    relationship_id: options.relationshipId,
+    relationship_type: relacionamento.tipo_relacionamento,
+    relationship_subtype: relacionamento.subtipo_relacionamento,
+    details: {
+      data_casamento: relacionamento.data_casamento ?? null,
+      local_casamento: relacionamento.local_casamento ?? null,
+      data_separacao: relacionamento.data_separacao ?? null,
+      local_separacao: relacionamento.local_separacao ?? null,
+      ativo: relacionamento.ativo ?? true,
+      observacoes: relacionamento.observacoes ?? null,
+      inverseTipoForFilho: options.inverseTipoForFilho,
+    },
+    changes: options.changes,
+  });
+
   const handleAddRelative = async () => {
     if (!addRelativeDialog || !pessoaBase) return;
 
@@ -1145,6 +1258,18 @@ export function MinhaArvore() {
         return;
       }
 
+      if (!isAdmin) {
+        const submitted = await submitRelationshipChangeRequest(getRelationshipRequestInput('create', payload, {
+          inverseTipoForFilho: addRelativeDialog.group === 'filhos' ? addRelativeForm.baseParentRole : undefined,
+        }));
+
+        if (submitted) {
+          setAddRelativeDialog(null);
+          setAddRelativeForm(createEmptyAddRelativeForm());
+        }
+        return;
+      }
+
       const created = await adicionarRelacionamentoComInverso(payload, {
         inverseTipoForFilho: addRelativeDialog.group === 'filhos' ? addRelativeForm.baseParentRole : undefined,
       });
@@ -1187,6 +1312,13 @@ export function MinhaArvore() {
     setRelationshipRemoving(`${group}:${person.id}`);
 
     try {
+      if (!isAdmin) {
+        await submitRelationshipChangeRequest(getRelationshipRequestInput('delete', rel, {
+          relationshipId: rel.id,
+        }));
+        return;
+      }
+
       const removed = await excluirRelacionamentoComInverso(rel.id);
       if (!removed) {
         toast.error('Não foi possível remover o vínculo. Verifique permissões do Supabase.');
@@ -1271,6 +1403,26 @@ export function MinhaArvore() {
         data_casamento: normalizedDate,
         local_casamento: normalizedLocation,
       };
+
+      if (!isAdmin) {
+        const submitted = await submitRelationshipChangeRequest(getRelationshipRequestInput('update', principal, {
+          relationshipId: principal.id,
+          changes: payload,
+        }));
+
+        if (submitted) {
+          setMarriageForms((current) => ({
+            ...current,
+            [spouse.id]: {
+              data_casamento: String(principal.data_casamento ?? ''),
+              local_casamento: String(principal.local_casamento ?? ''),
+              error: undefined,
+            },
+          }));
+        }
+        return;
+      }
+
       const updated = await atualizarRelacionamento(principal.id, payload);
       if (!updated) {
         toast.error('Não foi possível salvar o casamento. Verifique permissões do Supabase.');
@@ -1656,6 +1808,15 @@ export function MinhaArvore() {
                 />
               </div>
 
+              <ArquivosHistoricos
+                arquivos={archives}
+                onChange={(nextArchives) => {
+                  markFormDirty();
+                  setArchives(nextArchives);
+                }}
+                pessoaId={pessoaBase.id}
+              />
+
               <section className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <div className="mb-4">
                   <h3 className="text-base font-semibold text-gray-900">Preferências de notificação</h3>
@@ -1695,7 +1856,9 @@ export function MinhaArvore() {
             <div className="mb-5">
               <h2 className="text-xl font-bold text-gray-900">Vínculos familiares</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Adicione ou remova vínculos da sua família direta sem apagar pessoas da árvore.
+                {isAdmin
+                  ? 'Adicione ou remova vínculos da sua família direta sem apagar pessoas da árvore.'
+                  : 'Solicite vínculos, remoções ou correções para revisão dos administradores.'}
               </p>
             </div>
 
@@ -1748,8 +1911,8 @@ export function MinhaArvore() {
                                 className="h-8 w-8 shrink-0 text-red-700 hover:bg-red-50"
                                 onClick={() => handleRemoveRelative(group, person)}
                                 disabled={relationshipRemoving === removeKey}
-                                aria-label={`Remover ${person.nome_completo}`}
-                                title={`Remover ${person.nome_completo}`}
+                                aria-label={`${isAdmin ? 'Remover' : 'Solicitar remoção de'} ${person.nome_completo}`}
+                                title={`${isAdmin ? 'Remover' : 'Solicitar remoção de'} ${person.nome_completo}`}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -1783,7 +1946,9 @@ export function MinhaArvore() {
                                   onClick={() => handleSaveMarriage(person)}
                                   disabled={marriageSaving === person.id}
                                 >
-                                  {marriageSaving === person.id ? 'Salvando...' : 'Salvar casamento'}
+                                  {marriageSaving === person.id
+                                    ? (isAdmin ? 'Salvando...' : 'Enviando...')
+                                    : (isAdmin ? 'Salvar casamento' : 'Solicitar correção')}
                                 </Button>
                               </div>
                             )}
@@ -2003,7 +2168,7 @@ export function MinhaArvore() {
               Cancelar
             </Button>
             <Button type="button" onClick={handleAddRelative} disabled={relationshipSaving}>
-              {relationshipSaving ? 'Adicionando...' : 'Adicionar'}
+              {relationshipSaving ? (isAdmin ? 'Adicionando...' : 'Enviando...') : (isAdmin ? 'Adicionar' : 'Solicitar vínculo')}
             </Button>
           </DialogFooter>
         </DialogContent>

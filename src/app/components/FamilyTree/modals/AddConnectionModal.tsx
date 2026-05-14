@@ -17,6 +17,7 @@ interface AddConnectionModalProps {
   open: boolean;
   sourcePerson: Pessoa | null;
   pessoas: Pessoa[];
+  isAdmin?: boolean;
   onClose: () => void;
   onSubmit: (payload: AddConnectionPayload) => void;
 }
@@ -33,6 +34,7 @@ export function AddConnectionModal({
   open,
   sourcePerson,
   pessoas,
+  isAdmin = false,
   onClose,
   onSubmit,
 }: AddConnectionModalProps) {
@@ -125,7 +127,7 @@ export function AddConnectionModal({
 
             <div>
               <h2 id="add-connection-modal-title" className="text-base font-semibold text-gray-900">
-                Adicionar conexão
+                {isAdmin ? 'Adicionar conexão' : 'Solicitar vínculo'}
               </h2>
               <p className="mt-1 text-sm text-gray-500">
                 Origem: {sourcePerson.nome_completo}
@@ -251,7 +253,7 @@ export function AddConnectionModal({
             Cancelar
           </Button>
           <Button onClick={handleSubmit} disabled={!sourcePerson || !selectedTargetId}>
-            Salvar conexão
+            {isAdmin ? 'Salvar conexão' : 'Solicitar vínculo'}
           </Button>
         </div>
       </div>
