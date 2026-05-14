@@ -100,7 +100,8 @@ export type ForumAlvoTipo = 'topico' | 'resposta' | 'comentario';
 
 export interface ArquivoHistorico {
   id: string;
-  pessoa_id?: string;
+  pessoa_id?: string | null;
+  relacionamento_id?: string | null;
   tipo: 'imagem' | 'pdf';
   url: string;
   titulo: string;

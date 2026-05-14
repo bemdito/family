@@ -5,6 +5,7 @@ export const HISTORICAL_FILES_BUCKET = 'historical-files';
 
 type UploadOptions = {
   pessoaId?: string | null;
+  relacionamentoId?: string | null;
 };
 
 type StorageUploadResult = {
@@ -98,8 +99,10 @@ export async function uploadPersonAvatarFile(file: File | Blob, options: UploadO
 
 export async function uploadHistoricalFile(file: File, options: UploadOptions = {}) {
   const userId = await getCurrentUserId();
-  const pessoaSegment = options.pessoaId || 'pending';
-  const storagePath = `${pessoaSegment}/${userId}-${Date.now()}-${getSafeFileName(file.name)}`;
+  const ownerSegment = options.relacionamentoId
+    ? `relacionamentos/${options.relacionamentoId}`
+    : `pessoas/${options.pessoaId || 'pending'}`;
+  const storagePath = `${ownerSegment}/${userId}-${Date.now()}-${getSafeFileName(file.name)}`;
 
   return uploadPublicFile(HISTORICAL_FILES_BUCKET, storagePath, file, file.type || 'application/octet-stream');
 }
