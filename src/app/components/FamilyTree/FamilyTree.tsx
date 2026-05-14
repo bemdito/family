@@ -476,6 +476,7 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
     if (isGenealogyLayout) {
       return genealogyColumnsLayout(layoutGraph, {
         filters: genealogyFilters,
+        onMarriageClick,
       });
     }
 

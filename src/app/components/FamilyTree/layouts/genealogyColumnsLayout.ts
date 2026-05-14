@@ -6,6 +6,7 @@ import {
   DirectRelationVariant,
   GenealogyFilterKey,
   GenealogyFilters,
+  MarriageNodeDetails,
   TreeLayoutParams,
   TreeLayoutResult,
   getSortableBirthValue,
@@ -62,6 +63,7 @@ export interface GenealogyFamilyConnectorDraft {
 
 interface GenealogyColumnsLayoutOptions {
   filters?: GenealogyFilters;
+  onMarriageClick?: (details: MarriageNodeDetails) => void;
 }
 
 interface CreateGenealogyFamilyConnectorNodeParams {
@@ -444,9 +446,13 @@ function addGenealogySpouseEdge(
   sourcePersonId: string,
   targetPersonId: string,
   relationshipIndex: RelationshipIndex,
-  peopleById: Map<string, Pessoa>
+  peopleById: Map<string, Pessoa>,
+  onMarriageClick?: (details: MarriageNodeDetails) => void
 ) {
   const pairKey = getSpousePairKey(sourcePersonId, targetPersonId);
+  const relationship = relationshipIndex.spouseRelationshipByPairKey.get(pairKey);
+  const person1 = peopleById.get(sourcePersonId);
+  const person2 = peopleById.get(targetPersonId);
 
   if (edges.some((edge) => edge.id === `genealogy-spouse-${pairKey}`)) {
     return;
@@ -466,11 +472,17 @@ function addGenealogySpouseEdge(
       opacity: DIRECT_FAMILY_TOKENS.EDGE_OPACITY,
     },
     data: {
-      marriageStatus: getGenealogyMarriageStatus(
-        relationshipIndex.spouseRelationshipByPairKey.get(pairKey),
-        peopleById.get(sourcePersonId),
-        peopleById.get(targetPersonId)
-      ),
+      marriageStatus: getGenealogyMarriageStatus(relationship, person1, person2),
+      marriageDetails: {
+        id: relationship?.id,
+        marriageKey: pairKey,
+        person1Id: sourcePersonId,
+        person2Id: targetPersonId,
+        person1,
+        person2,
+        relationship,
+      },
+      onMarriageClick,
     },
   });
 }
@@ -524,6 +536,7 @@ function appendPlacementNodes(
   filters: GenealogyFilters,
   nodes: Node[],
   edges: Edge[],
+  onMarriageClick?: (details: MarriageNodeDetails) => void,
   positionedPeople?: Map<string, PositionedPerson>
 ) {
   let currentY = startY;
@@ -539,7 +552,7 @@ function appendPlacementNodes(
       currentY += CARD_HEIGHT + gap;
 
       if (areSpouses(previousPlacement?.pessoa.id, pessoa.id, relationshipIndex)) {
-        addGenealogySpouseEdge(edges, previousPlacement.pessoa.id, pessoa.id, relationshipIndex, peopleById);
+        addGenealogySpouseEdge(edges, previousPlacement.pessoa.id, pessoa.id, relationshipIndex, peopleById, onMarriageClick);
       }
     }
 
@@ -962,6 +975,7 @@ function layoutAdjacentGenerationFamilyUnits({
   positionedPeople,
   familyConnectorDrafts,
   positionParents,
+  onMarriageClick,
 }: {
   parentGroup: GenerationGroup;
   childGroup?: GenerationGroup;
@@ -977,6 +991,7 @@ function layoutAdjacentGenerationFamilyUnits({
   positionedPeople: Map<string, PositionedPerson>;
   familyConnectorDrafts: GenealogyFamilyConnectorDraft[];
   positionParents: boolean;
+  onMarriageClick?: (details: MarriageNodeDetails) => void;
 }) {
   const visitedChildIds = new Set<string>();
   const units = buildAdjacentGenerationParentUnits(
@@ -1008,6 +1023,7 @@ function layoutAdjacentGenerationFamilyUnits({
         filters,
         nodes,
         edges,
+        onMarriageClick,
         positionedPeople
       );
     }
@@ -1044,6 +1060,7 @@ function layoutAdjacentGenerationFamilyUnits({
         filters,
         nodes,
         edges,
+        onMarriageClick,
         positionedPeople
       );
     }
@@ -1087,6 +1104,7 @@ function layoutAdjacentGenerationFamilyUnits({
     filters,
     nodes,
     edges,
+    onMarriageClick,
     positionedPeople
   );
 }
@@ -1096,6 +1114,7 @@ export function genealogyColumnsLayout(
   options: GenealogyColumnsLayoutOptions = {}
 ): TreeLayoutResult {
   const filters = options.filters ?? DEFAULT_GENEALOGY_FILTERS;
+  const onMarriageClick = options.onMarriageClick;
   const relationshipIndex = buildRelationshipIndex(graph);
   const groups = groupPeopleByGeneration(graph, relationshipIndex);
   const personNodeById = new Map(graph.personNodes.map((node) => [node.id, node]));
@@ -1169,6 +1188,7 @@ export function genealogyColumnsLayout(
         positionedPeople,
         familyConnectorDrafts,
         positionParents: !hasPositionedGroupPeople,
+        onMarriageClick,
       });
 
       return;
@@ -1188,6 +1208,7 @@ export function genealogyColumnsLayout(
       filters,
       nodes,
       edges,
+      onMarriageClick,
       positionedPeople
     );
   });

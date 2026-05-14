@@ -1,9 +1,12 @@
 import React from 'react';
 import { BaseEdge, EdgeLabelRenderer, EdgeProps } from 'reactflow';
 import type { GenealogyMarriageStatus } from './layouts/genealogyColumnsLayout';
+import type { MarriageNodeDetails } from './types';
 
 interface GenealogySpouseEdgeData {
   marriageStatus?: GenealogyMarriageStatus;
+  marriageDetails?: MarriageNodeDetails;
+  onMarriageClick?: (details: MarriageNodeDetails) => void;
 }
 
 const marriageStatusStyles: Record<GenealogyMarriageStatus, { background: string; border: string }> = {
@@ -40,22 +43,33 @@ export function GenealogySpouseEdge({
   const markerY = sourceY + (targetY - sourceY) / 2;
   const marriageStatus = data?.marriageStatus ?? 'unknown';
   const markerStyle = marriageStatusStyles[marriageStatus];
+  const handleRingClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (data?.marriageDetails) {
+      data.onMarriageClick?.(data.marriageDetails);
+    }
+  };
 
   return (
     <>
       <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />
       <EdgeLabelRenderer>
-        <div
-          className="nodrag nopan pointer-events-none absolute flex h-8 w-8 items-center justify-center rounded-full border text-base shadow-sm"
+        <button
+          type="button"
+          className="nodrag nopan absolute flex h-8 w-8 items-center justify-center rounded-full border text-base shadow-sm"
           style={{
             transform: `translate(-50%, -50%) translate(${markerX}px, ${markerY}px)`,
             backgroundColor: markerStyle.background,
             borderColor: markerStyle.border,
           }}
-          aria-hidden="true"
+          onClick={handleRingClick}
+          onMouseDown={(event) => event.stopPropagation()}
+          aria-label="Visualizar relacionamento conjugal"
         >
           💍
-        </div>
+        </button>
       </EdgeLabelRenderer>
     </>
   );

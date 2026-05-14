@@ -13,10 +13,11 @@ interface ArquivosHistoricosProps {
   arquivos: ArquivoHistorico[];
   onChange: (arquivos: ArquivoHistorico[]) => void;
   pessoaId?: string | null;
+  relacionamentoId?: string | null;
   readOnly?: boolean;
 }
 
-export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = false }: ArquivosHistoricosProps) {
+export function ArquivosHistoricos({ arquivos, onChange, pessoaId, relacionamentoId, readOnly = false }: ArquivosHistoricosProps) {
   const [novoArquivo, setNovoArquivo] = useState({
     titulo: '',
     descricao: '',
@@ -41,7 +42,7 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = fa
 
     setIsUploadingFile(true);
     try {
-      const upload = await uploadHistoricalFile(file, { pessoaId });
+      const upload = await uploadHistoricalFile(file, { pessoaId, relacionamentoId });
       setNovoArquivo(prev => ({
         ...prev,
         url: upload.url,
@@ -66,6 +67,8 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, readOnly = fa
       tipo: novoArquivo.tipo,
       url: novoArquivo.url,
       titulo: novoArquivo.titulo,
+      pessoa_id: pessoaId ?? null,
+      relacionamento_id: relacionamentoId ?? null,
       descricao: novoArquivo.descricao || undefined,
       ano: novoArquivo.ano || undefined,
       ordem: arquivos.length,

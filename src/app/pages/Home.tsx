@@ -1218,6 +1218,7 @@ export function Home() {
       <ViewMarriageModal
         open={!!selectedMarriage}
         marriage={selectedMarriage}
+        isAdmin={isAdmin}
         onClose={() => setSelectedMarriage(null)}
       />
 
