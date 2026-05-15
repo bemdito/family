@@ -15,6 +15,7 @@ import {
 import { NotificationStatusBadge } from '../../components/admin/NotificationStatusBadge';
 import { useAuth } from '../../contexts/AuthContext';
 import { dispatchNotification } from '../../services/notificationDispatchService';
+import { DailyNotificationRunSummary, runDailyNotificationChecks } from '../../services/notificationScheduledService';
 import {
   checkNotificationEmailConfiguration,
   getNotificationAdminSummary,
@@ -92,6 +93,8 @@ export function AdminNotificacoes() {
   );
   const [loading, setLoading] = useState(true);
   const [creatingTest, setCreatingTest] = useState(false);
+  const [runningManualRoutine, setRunningManualRoutine] = useState(false);
+  const [manualRoutineSummary, setManualRoutineSummary] = useState<DailyNotificationRunSummary | null>(null);
 
   const loadDiagnostics = async () => {
     try {
@@ -137,6 +140,17 @@ export function AdminNotificacoes() {
       await loadDiagnostics();
     } finally {
       setCreatingTest(false);
+    }
+  };
+
+  const handleRunManualRoutine = async () => {
+    try {
+      setRunningManualRoutine(true);
+      const result = await runDailyNotificationChecks();
+      setManualRoutineSummary(result);
+      await loadDiagnostics();
+    } finally {
+      setRunningManualRoutine(false);
     }
   };
 
@@ -238,6 +252,54 @@ export function AdminNotificacoes() {
             <p className="mt-2 text-xs text-gray-500">
               Função esperada: {emailConfig.functionName}. Este painel é somente leitura e não envia e-mail real.
             </p>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader className="flex flex-row items-center justify-between gap-4">
+            <CardTitle className="text-base">Rotinas manuais</CardTitle>
+            <Button onClick={handleRunManualRoutine} disabled={runningManualRoutine || loading}>
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              Verificar aniversários e memórias de hoje
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-700">
+              Executa apenas notificações internas para datas completas do dia. Não envia e-mail, push ou WhatsApp.
+            </p>
+
+            {runningManualRoutine && (
+              <p className="mt-3 text-sm text-gray-500">Verificando datas especiais...</p>
+            )}
+
+            {manualRoutineSummary && (
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-6">
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">Aniversários</p>
+                  <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.birthdaysFound}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">Memórias</p>
+                  <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.memorialsFound}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">Criadas</p>
+                  <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.notificationsCreated}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">Duplicadas</p>
+                  <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.skippedDuplicates}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">Preferências</p>
+                  <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.skippedByPreferences}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">Destinatários</p>
+                  <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.recipientsResolved}</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -208,7 +208,35 @@ export function shouldSendNotificationChannel(
 }
 
 export async function createInternalNotification(intent: NotificationIntent) {
-  const { data, error } = await supabase
+  const metadata = sanitizeNotificationMetadata(intent.metadata);
+  const { data, error } = await supabase.rpc('create_internal_notification_for_user', {
+    target_user_id: intent.userId,
+    notification_title: intent.titulo,
+    notification_message: intent.mensagem,
+    notification_type: intent.type,
+    notification_link: intent.link ?? null,
+    notification_metadata: metadata,
+  });
+
+  if (!error && data) {
+    return {
+      id: String(data),
+      user_id: intent.userId,
+      titulo: intent.titulo,
+      mensagem: intent.mensagem,
+      tipo: intent.type,
+      canal: 'interna',
+      lida: false,
+      link: intent.link,
+      metadata,
+    } satisfies NotificacaoUsuario;
+  }
+
+  if (error && error.message && !error.message.includes('create_internal_notification_for_user')) {
+    throw error;
+  }
+
+  const fallback = await supabase
     .from('notificacoes_usuario')
     .insert({
       user_id: intent.userId,
@@ -217,13 +245,13 @@ export async function createInternalNotification(intent: NotificationIntent) {
       tipo: intent.type,
       canal: 'interna',
       link: intent.link,
-      metadata: sanitizeNotificationMetadata(intent.metadata),
+      metadata,
     })
     .select('*')
     .single();
 
-  if (error) throw error;
-  return mapNotificacaoRow(data);
+  if (fallback.error) throw fallback.error;
+  return mapNotificacaoRow(fallback.data);
 }
 
 export async function trySendEmailNotification(intent: NotificationIntent) {
@@ -243,21 +271,35 @@ export async function trySendEmailNotification(intent: NotificationIntent) {
 
 export async function logNotificationDispatch(result: NotificationDispatchResult) {
   try {
-    const { error } = await supabase
-      .from('notification_dispatch_logs')
-      .insert({
-        notification_id: result.notificationId ?? null,
-        user_id: result.userId,
-        tipo: result.type,
-        canal: result.channel,
-        status: result.status,
-        provider: result.provider ?? null,
-        error_message: result.errorMessage ?? null,
-        metadata: sanitizeNotificationMetadata(result.metadata),
-      });
+    const metadata = sanitizeNotificationMetadata(result.metadata);
+    const { error } = await supabase.rpc('insert_notification_dispatch_log_for_user', {
+      target_notification_id: result.notificationId ?? null,
+      target_user_id: result.userId,
+      notification_type: result.type,
+      notification_channel: result.channel,
+      dispatch_status: result.status,
+      dispatch_provider: result.provider ?? null,
+      dispatch_error_message: result.errorMessage ?? null,
+      dispatch_metadata: metadata,
+    });
 
     if (error) {
-      console.warn('[Supabase] Log de dispatch de notificação não registrado:', error.message);
+      const fallback = await supabase
+        .from('notification_dispatch_logs')
+        .insert({
+          notification_id: result.notificationId ?? null,
+          user_id: result.userId,
+          tipo: result.type,
+          canal: result.channel,
+          status: result.status,
+          provider: result.provider ?? null,
+          error_message: result.errorMessage ?? null,
+          metadata,
+        });
+
+      if (fallback.error) {
+        console.warn('[Supabase] Log de dispatch de notificação não registrado:', fallback.error.message);
+      }
     }
   } catch (error) {
     console.warn('[Supabase] Erro inesperado ao registrar dispatch de notificação:', error);

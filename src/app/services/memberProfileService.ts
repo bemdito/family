@@ -2,6 +2,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 import { Pessoa } from '../types';
 import { buildActivityActorFromUser, createActivityLog } from './activityLogService';
+import { notifyNewUserLinked } from './notificationTriggersService';
 import { emitTreeDataChanged } from './treeDataCache';
 
 export interface MemberProfile {
@@ -531,15 +532,26 @@ export async function confirmOwnLinkedPersonData(linkId: string) {
     .single();
 
   if (!error && data) {
+    const link = data as UserPersonLinkRecord;
     await createActivityLog({
       action: 'first_access.confirmed',
       entity_type: 'first_access',
       entity_id: linkId,
       entity_label: 'Confirmação de primeiro acesso',
       metadata: {
-        pessoa_id: (data as UserPersonLinkRecord).pessoa_id,
+        pessoa_id: link.pessoa_id,
       },
     });
+
+    try {
+      await notifyNewUserLinked({
+        linkedUserId: link.user_id,
+        pessoaId: link.pessoa_id,
+        linkId: link.id,
+      });
+    } catch (notificationError) {
+      console.warn('[Notificações] Falha ao notificar novo vínculo confirmado:', notificationError);
+    }
   }
 
   return { error: error?.message, data: (data as UserPersonLinkRecord) ?? null };

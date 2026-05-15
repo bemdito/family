@@ -13,6 +13,7 @@ import {
   Pessoa,
 } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { notifyForumCommentCreated, notifyForumReplyCreated } from './notificationTriggersService';
 
 type SupabaseErrorLike = {
   message?: string;
@@ -346,7 +347,22 @@ export async function criarRespostaForum(payload: CriarRespostaForumPayload): Pr
     return undefined;
   }
 
-  return data ? (data as ForumResposta) : undefined;
+  if (!data) return undefined;
+
+  const resposta = data as ForumResposta;
+  if (resposta.status === 'publicado') {
+    try {
+      await notifyForumReplyCreated({
+        topicId: resposta.topico_id,
+        replyId: resposta.id,
+        actorUserId: resposta.autor_id,
+      });
+    } catch (notificationError) {
+      console.warn('[Notificações] Falha ao notificar nova resposta no fórum:', notificationError);
+    }
+  }
+
+  return resposta;
 }
 
 export async function atualizarRespostaForum(
@@ -427,7 +443,22 @@ export async function criarComentarioForum(payload: CriarComentarioForumPayload)
     return undefined;
   }
 
-  return data ? (data as ForumComentario) : undefined;
+  if (!data) return undefined;
+
+  const comentario = data as ForumComentario;
+  if (comentario.status === 'publicado') {
+    try {
+      await notifyForumCommentCreated({
+        responseId: comentario.resposta_id,
+        commentId: comentario.id,
+        actorUserId: comentario.autor_id,
+      });
+    } catch (notificationError) {
+      console.warn('[Notificações] Falha ao notificar novo comentário no fórum:', notificationError);
+    }
+  }
+
+  return comentario;
 }
 
 export async function atualizarComentarioForum(

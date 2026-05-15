@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
 import { ArquivoHistorico } from '../types';
 import { createActivityLog } from './activityLogService';
+import { notifyHistoricalFileAdded } from './notificationTriggersService';
 import { isAdminUser } from './permissionService';
 import { uploadHistoricalFile } from './storageService';
 import { emitTreeDataChanged } from './treeDataCache';
@@ -230,6 +231,18 @@ async function salvarArquivosHistoricosPorOwner(
           order: payload.ordem,
         },
       });
+
+      try {
+        await notifyHistoricalFileAdded({
+          historicalFileId: String(data?.id ?? arquivo.id),
+          title: arquivo.titulo,
+          fileType: arquivo.tipo,
+          pessoaId: owner.linkedTo === 'person' ? owner.pessoaId : null,
+          relacionamentoId: owner.linkedTo === 'relationship' ? owner.relacionamentoId : null,
+        });
+      } catch (notificationError) {
+        console.warn('[Notificações] Falha ao notificar novo arquivo histórico:', notificationError);
+      }
     }
   }
 
