@@ -255,7 +255,7 @@ export async function createInternalNotification(intent: NotificationIntent) {
 }
 
 export async function trySendEmailNotification(intent: NotificationIntent) {
-  const { error } = await supabase.functions.invoke('send-notification-email', {
+  const { data, error } = await supabase.functions.invoke('send-notification-email', {
     body: {
       userId: intent.userId,
       notificationType: intent.type,
@@ -267,6 +267,29 @@ export async function trySendEmailNotification(intent: NotificationIntent) {
   });
 
   if (error) throw error;
+  return (data ?? {}) as {
+    ok?: boolean;
+    status?: NotificationDispatchStatus | 'sent';
+    provider?: string | null;
+    providerMessageId?: string | null;
+    error?: string | null;
+  };
+}
+
+function mapEmailFunctionStatus(status?: string): NotificationDispatchStatus {
+  switch (status) {
+    case 'sent':
+      return 'sent';
+    case 'disabled_by_preferences':
+      return 'disabled_by_preferences';
+    case 'missing_destination':
+      return 'missing_destination';
+    case 'not_configured':
+      return 'not_configured';
+    case 'failed':
+    default:
+      return 'failed';
+  }
 }
 
 export async function logNotificationDispatch(result: NotificationDispatchResult) {
@@ -437,13 +460,19 @@ export async function dispatchNotification(intent: NotificationIntent): Promise<
 
     if (channel === 'email') {
       try {
-        await trySendEmailNotification(intent);
+        const emailResult = await trySendEmailNotification(intent);
+        const status = mapEmailFunctionStatus(emailResult.status);
         const result = buildResult({
           intent,
           channel,
-          status: 'sent',
+          status,
           notificationId: internalNotificationId,
-          provider: 'send-notification-email',
+          provider: emailResult.provider || 'send-notification-email',
+          errorMessage: status === 'sent' ? null : emailResult.error ?? null,
+          metadata: {
+            ...intent.metadata,
+            provider_message_id: emailResult.providerMessageId,
+          },
         });
         results.push(result);
         await persistResult(result);

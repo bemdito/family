@@ -9,6 +9,7 @@ import {
 } from '../types';
 
 export type NotificationEmailConfigurationStatus = 'verified' | 'not_verified' | 'not_configured';
+export type DailyNotificationsAutomationStatus = 'configured' | 'not_verified' | 'not_configured';
 
 export interface NotificationEmailConfiguration {
   status: NotificationEmailConfigurationStatus;
@@ -16,6 +17,16 @@ export interface NotificationEmailConfiguration {
   codeReferenceFound: boolean;
   hasSupabaseUrl: boolean;
   hasAnonKey: boolean;
+  message: string;
+}
+
+export interface DailyNotificationsAutomationInfo {
+  status: DailyNotificationsAutomationStatus;
+  functionName: string;
+  scheduledTime: string;
+  lastOccurrenceAt?: string | null;
+  lastOccurrenceDate?: string | null;
+  lastDispatchAt?: string | null;
   message: string;
 }
 
@@ -146,6 +157,53 @@ export async function getNotificationAdminSummary(): Promise<NotificationAdminSu
     recentDispatchErrors: dispatchLogs.filter((log) => log.status === 'failed').length,
     byType: countBy(notifications, (notification) => notification.tipo),
     byChannel,
+  };
+}
+
+export async function getDailyNotificationsAutomationInfo(): Promise<DailyNotificationsAutomationInfo> {
+  const [occurrencesResult, dispatchLogsResult] = await Promise.all([
+    supabase
+      .from('notification_occurrences')
+      .select('occurrence_date,created_at')
+      .in('tipo', ['aniversario', 'memoria_falecimento'])
+      .order('created_at', { ascending: false })
+      .limit(1),
+    supabase
+      .from('notification_dispatch_logs')
+      .select('created_at,metadata')
+      .in('tipo', ['aniversario', 'datas_especiais'])
+      .order('created_at', { ascending: false })
+      .limit(1),
+  ]);
+
+  const occurrence = occurrencesResult.data?.[0] as
+    | { occurrence_date?: string | null; created_at?: string | null }
+    | undefined;
+  const dispatchLog = dispatchLogsResult.data?.[0] as
+    | { created_at?: string | null; metadata?: Record<string, unknown> | null }
+    | undefined;
+
+  const edgeLogSeen = dispatchLog?.metadata?.source === 'edge-run-daily-notifications';
+
+  if (occurrencesResult.error || dispatchLogsResult.error) {
+    return {
+      status: 'not_verified',
+      functionName: 'run-daily-notifications',
+      scheduledTime: '08:00 America/Sao_Paulo',
+      message: 'Não foi possível verificar os registros recentes da rotina automática.',
+    };
+  }
+
+  return {
+    status: edgeLogSeen ? 'configured' : 'not_configured',
+    functionName: 'run-daily-notifications',
+    scheduledTime: '08:00 America/Sao_Paulo',
+    lastOccurrenceAt: occurrence?.created_at ?? null,
+    lastOccurrenceDate: occurrence?.occurrence_date ?? null,
+    lastDispatchAt: dispatchLog?.created_at ?? null,
+    message: edgeLogSeen
+      ? 'Há registros recentes gerados pela Edge Function.'
+      : 'Rotina automática ainda não verificada. Use o botão manual enquanto o cron não estiver ativado.',
   };
 }
 

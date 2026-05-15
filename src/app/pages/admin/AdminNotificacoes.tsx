@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowLeft, Bell, Mail, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, Bell, CalendarClock, Mail, RefreshCcw } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -18,7 +18,9 @@ import { dispatchNotification } from '../../services/notificationDispatchService
 import { DailyNotificationRunSummary, runDailyNotificationChecks } from '../../services/notificationScheduledService';
 import {
   checkNotificationEmailConfiguration,
+  DailyNotificationsAutomationInfo,
   getNotificationAdminSummary,
+  getDailyNotificationsAutomationInfo,
   listRecentNotificationDispatchLogs,
   listRecentNotificationPreferencesAdmin,
   listRecentNotificationsAdmin,
@@ -27,6 +29,7 @@ import {
 import {
   NotificationAdminSummary,
   NotificationDispatchLog,
+  NotificationDispatchResult,
   NotificacaoUsuario,
   PreferenciaNotificacao,
 } from '../../types';
@@ -91,8 +94,16 @@ export function AdminNotificacoes() {
   const [emailConfig, setEmailConfig] = useState<NotificationEmailConfiguration>(() =>
     checkNotificationEmailConfiguration()
   );
+  const [automationInfo, setAutomationInfo] = useState<DailyNotificationsAutomationInfo>({
+    status: 'not_verified',
+    functionName: 'run-daily-notifications',
+    scheduledTime: '08:00 America/Sao_Paulo',
+    message: 'Verificação ainda não executada.',
+  });
   const [loading, setLoading] = useState(true);
   const [creatingTest, setCreatingTest] = useState(false);
+  const [sendingEmailTest, setSendingEmailTest] = useState(false);
+  const [emailTestResults, setEmailTestResults] = useState<NotificationDispatchResult[] | null>(null);
   const [runningManualRoutine, setRunningManualRoutine] = useState(false);
   const [manualRoutineSummary, setManualRoutineSummary] = useState<DailyNotificationRunSummary | null>(null);
   const [manualRoutineError, setManualRoutineError] = useState<string | null>(null);
@@ -100,11 +111,12 @@ export function AdminNotificacoes() {
   const loadDiagnostics = async () => {
     try {
       setLoading(true);
-      const [nextNotifications, nextPreferences, nextDispatchLogs, nextSummary] = await Promise.all([
+      const [nextNotifications, nextPreferences, nextDispatchLogs, nextSummary, nextAutomationInfo] = await Promise.all([
         listRecentNotificationsAdmin(50),
         listRecentNotificationPreferencesAdmin(50),
         listRecentNotificationDispatchLogs(50),
         getNotificationAdminSummary(),
+        getDailyNotificationsAutomationInfo(),
       ]);
 
       setNotifications(nextNotifications);
@@ -112,6 +124,7 @@ export function AdminNotificacoes() {
       setDispatchLogs(nextDispatchLogs);
       setSummary(nextSummary);
       setEmailConfig(checkNotificationEmailConfiguration());
+      setAutomationInfo(nextAutomationInfo);
     } finally {
       setLoading(false);
     }
@@ -141,6 +154,35 @@ export function AdminNotificacoes() {
       await loadDiagnostics();
     } finally {
       setCreatingTest(false);
+    }
+  };
+
+  const handleSendEmailTest = async () => {
+    if (!user?.id) return;
+    const confirmed = window.confirm(
+      'Enviar um e-mail real de teste apenas para o seu usuário admin? A notificação interna também será criada.'
+    );
+    if (!confirmed) return;
+
+    try {
+      setSendingEmailTest(true);
+      const results = await dispatchNotification({
+        userId: user.id,
+        type: 'notificacao',
+        titulo: 'Teste de e-mail de notificação',
+        mensagem: 'E-mail de teste enviado pelo painel admin para validar provider, preferências e logs.',
+        link: '/notificacoes',
+        metadata: {
+          source: 'admin-email-test',
+          test: true,
+        },
+        channels: ['interna', 'email'],
+        respectPreferences: true,
+      });
+      setEmailTestResults(results);
+      await loadDiagnostics();
+    } finally {
+      setSendingEmailTest(false);
     }
   };
 
@@ -256,8 +298,29 @@ export function AdminNotificacoes() {
           <CardContent>
             <p className="text-sm text-gray-700">{emailConfig.message}</p>
             <p className="mt-2 text-xs text-gray-500">
-              Função esperada: {emailConfig.functionName}. Este painel é somente leitura e não envia e-mail real.
+              Função esperada: {emailConfig.functionName}. Secrets não são verificáveis pelo frontend; valide com teste controlado.
             </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button variant="secondary" onClick={handleSendEmailTest} disabled={sendingEmailTest || loading}>
+                <Mail className="mr-2 h-4 w-4" />
+                Enviar e-mail de teste para mim
+              </Button>
+              {sendingEmailTest && <span className="text-sm text-gray-500">Enviando teste...</span>}
+            </div>
+            {emailTestResults && (
+              <div className="mt-4 space-y-2">
+                {emailTestResults.map((result) => (
+                  <div
+                    key={`${result.channel}-${result.status}-${result.notificationId || 'sem-id'}`}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium text-gray-800">{result.channel}</span>
+                    <NotificationStatusBadge status={result.status} />
+                    <span className="text-xs text-gray-500">{result.errorMessage || result.provider || 'Sem erro'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -321,6 +384,54 @@ export function AdminNotificacoes() {
                   <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.recipientsResolved}</p>
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarClock className="h-4 w-4" />
+              Agendamento automático
+            </CardTitle>
+            <Badge
+              variant={
+                automationInfo.status === 'configured'
+                  ? 'outline'
+                  : automationInfo.status === 'not_configured'
+                    ? 'destructive'
+                    : 'secondary'
+              }
+            >
+              {automationInfo.status === 'configured'
+                ? 'Configurado'
+                : automationInfo.status === 'not_configured'
+                  ? 'Não configurado'
+                  : 'Não verificado'}
+            </Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 text-sm text-gray-700 md:grid-cols-3">
+              <div>
+                <p className="text-xs text-gray-500">Function</p>
+                <p className="font-medium text-gray-900">{automationInfo.functionName}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Horário planejado</p>
+                <p className="font-medium text-gray-900">{automationInfo.scheduledTime}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Última ocorrência</p>
+                <p className="font-medium text-gray-900">
+                  {automationInfo.lastOccurrenceAt
+                    ? `${formatDate(automationInfo.lastOccurrenceAt)} (${automationInfo.lastOccurrenceDate})`
+                    : 'Sem registro'}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-sm text-gray-600">{automationInfo.message}</p>
+            {automationInfo.lastDispatchAt && (
+              <p className="mt-1 text-xs text-gray-500">Último dispatch: {formatDate(automationInfo.lastDispatchAt)}</p>
             )}
           </CardContent>
         </Card>
