@@ -33,6 +33,11 @@ export const ACTIVITY_ACTION_LABELS: Record<ActivityLogAction, string> = {
   'historical_file.removed': 'Arquivo histórico removido',
   'historical_file.updated': 'Arquivo histórico atualizado',
   'notification_preferences.updated': 'Preferências de notificação atualizadas',
+  'notification.created': 'Notificação criada',
+  'notification.dispatched': 'Notificação disparada',
+  'notification.dispatch_failed': 'Falha no disparo de notificação',
+  'notification.marked_read': 'Notificação marcada como lida',
+  'notification.removed': 'Notificação removida',
   'first_access.confirmed': 'Primeiro acesso confirmado',
 };
 
@@ -42,6 +47,8 @@ export const ACTIVITY_ENTITY_LABELS: Record<ActivityLogEntityType, string> = {
   relationship: 'Relacionamento',
   historical_file: 'Arquivo histórico',
   notification_preferences: 'Notificações',
+  notification: 'Notificação',
+  notification_dispatch: 'Disparo de notificação',
   first_access: 'Primeiro acesso',
 };
 

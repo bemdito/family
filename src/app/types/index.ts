@@ -59,6 +59,17 @@ export type TipoConteudoFavorito =
 
 export type TipoCanalNotificacao = 'interna' | 'email' | 'push' | 'whatsapp';
 
+export type NotificationTargetChannel = TipoCanalNotificacao;
+
+export type NotificationDispatchStatus =
+  | 'pending'
+  | 'sent'
+  | 'failed'
+  | 'skipped'
+  | 'disabled_by_preferences'
+  | 'missing_destination'
+  | 'not_configured';
+
 export type ActivityLogAction =
   | 'person.created'
   | 'person.updated'
@@ -78,6 +89,11 @@ export type ActivityLogAction =
   | 'historical_file.removed'
   | 'historical_file.updated'
   | 'notification_preferences.updated'
+  | 'notification.created'
+  | 'notification.dispatched'
+  | 'notification.dispatch_failed'
+  | 'notification.marked_read'
+  | 'notification.removed'
   | 'first_access.confirmed';
 
 export type ActivityLogEntityType =
@@ -86,6 +102,8 @@ export type ActivityLogEntityType =
   | 'relationship'
   | 'historical_file'
   | 'notification_preferences'
+  | 'notification'
+  | 'notification_dispatch'
   | 'first_access';
 
 export type RelationshipChangeRequestAction = 'create' | 'update' | 'delete';
@@ -310,6 +328,51 @@ export interface PreferenciaNotificacao {
   receber_email_evento_historico_familia: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface NotificationDispatchLog {
+  id: string;
+  notification_id?: string | null;
+  user_id?: string | null;
+  tipo: string;
+  canal: TipoCanalNotificacao | string;
+  status: NotificationDispatchStatus;
+  provider?: string | null;
+  error_message?: string | null;
+  metadata: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface NotificationIntent {
+  type: TipoNotificacaoUsuario;
+  userId: string;
+  titulo: string;
+  mensagem: string;
+  link?: string;
+  metadata?: Record<string, unknown>;
+  channels?: NotificationTargetChannel[];
+  respectPreferences?: boolean;
+}
+
+export interface NotificationDispatchResult {
+  notificationId?: string | null;
+  userId: string;
+  type: TipoNotificacaoUsuario;
+  channel: NotificationTargetChannel;
+  status: NotificationDispatchStatus;
+  provider?: string | null;
+  errorMessage?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface NotificationAdminSummary {
+  totalNotifications: number;
+  unreadNotifications: number;
+  channelsUsed: number;
+  recentDispatchErrors: number;
+  byType: Record<string, number>;
+  byChannel: Record<string, number>;
 }
 
 export interface ActivityLog {

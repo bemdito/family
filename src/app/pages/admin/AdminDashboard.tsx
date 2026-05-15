@@ -18,6 +18,7 @@ import {
   Clock,
   GitPullRequest,
   ShieldCheck,
+  Bell,
 } from 'lucide-react';
 
 type Pessoa = {
@@ -126,6 +127,13 @@ export function AdminDashboard() {
       icon: Clock,
       onClick: () => navigate('/admin/atividades'),
       color: 'bg-slate-800',
+    },
+    {
+      title: 'Notificações',
+      description: 'Diagnóstico e envios',
+      icon: Bell,
+      onClick: () => navigate('/admin/notificacoes'),
+      color: 'bg-blue-700',
     },
     {
       title: 'Integridade dos dados',
@@ -240,7 +248,7 @@ export function AdminDashboard() {
 
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Ações Rápidas</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
             {quickActions.map((action) => (
               <button
                 key={action.title}

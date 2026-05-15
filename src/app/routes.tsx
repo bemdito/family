@@ -27,6 +27,7 @@ import { AdminDiagnostico } from './pages/admin/AdminDiagnostico';
 import { AdminIntegridade } from './pages/admin/AdminIntegridade';
 import { AdminAtividades } from './pages/admin/AdminAtividades';
 import { AdminSolicitacoesVinculos } from './pages/admin/AdminSolicitacoesVinculos';
+import { AdminNotificacoes } from './pages/admin/AdminNotificacoes';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { MemberRoute } from './components/MemberRoute';
 import { TreeAccessRoute } from './components/TreeAccessRoute';
@@ -155,6 +156,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/atividades',
     element: <ProtectedRoute><AdminAtividades /></ProtectedRoute>,
+  },
+  {
+    path: '/admin/notificacoes',
+    element: <ProtectedRoute><AdminNotificacoes /></ProtectedRoute>,
   },
   {
     path: '/admin/solicitacoes-vinculos',

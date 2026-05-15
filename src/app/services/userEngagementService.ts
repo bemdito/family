@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { createActivityLog } from './activityLogService';
+import { dispatchNotification } from './notificationDispatchService';
 import {
   FavoritoUsuario,
   NotificacaoUsuario,
@@ -356,25 +357,26 @@ export async function criarNotificacaoComEmail(params: {
   link?: string;
   metadata?: Record<string, unknown>;
 }) {
-  const notificacao = await criarNotificacaoSupabase({
+  const results = await dispatchNotification({
     userId: params.userId,
+    type: params.notificationType,
     titulo: params.titulo,
     mensagem: params.mensagem,
-    tipo: params.notificationType,
-    canal: 'interna',
     link: params.link,
     metadata: params.metadata,
+    channels: ['interna', 'email'],
   });
 
-  try {
-    await supabase.functions.invoke('send-notification-email', {
-      body: params,
-    });
-  } catch (error) {
-    console.warn('[Supabase Function] Email de notificação não enviado:', error);
+  const internalResult = results.find((result) => result.channel === 'interna' && result.notificationId);
+
+  if (internalResult?.notificationId) {
+    const notificacoes = await listarNotificacoesSupabase(params.userId);
+    const notificacao = notificacoes.find((item) => item.id === internalResult.notificationId);
+    if (notificacao) return notificacao;
   }
 
-  return notificacao;
+  const internalFailure = results.find((result) => result.channel === 'interna' && result.status === 'failed');
+  throw new Error(internalFailure?.errorMessage || 'Não foi possível criar a notificação interna.');
 }
 
 export function criarNotificacao(params: Omit<NotificacaoUsuario, 'id' | 'user_id' | 'created_at' | 'lida'> & { userId?: string }) {
