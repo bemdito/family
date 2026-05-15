@@ -19,7 +19,7 @@ export interface NotificationOccurrenceInput {
   entityId: string;
   occurrenceDate: string;
   notificationId?: string | null;
-  status: 'created';
+  status: 'pending' | 'created' | 'sent' | 'failed' | 'skipped';
   metadata: Record<string, unknown>;
 }
 
@@ -35,6 +35,8 @@ export interface DailyNotificationRunSummary {
   notificationsCreated: number;
   skippedDuplicates: number;
   skippedByPreferences: number;
+  skippedWithoutRecipients: number;
+  dispatchFailures: number;
   recipientsResolved: number;
   dispatchResults: NotificationDispatchResult[];
 }
@@ -100,18 +102,24 @@ export async function createNotificationOccurrenceIfMissing(
   throw error;
 }
 
-async function notificationOccurrenceExists(occurrenceKey: string) {
-  const { data, error } = await supabase
+async function updateNotificationOccurrence(params: {
+  occurrenceKey: string;
+  notificationId?: string | null;
+  status: NotificationOccurrenceInput['status'];
+  metadata: Record<string, unknown>;
+}) {
+  const { error } = await supabase
     .from('notification_occurrences')
-    .select('id')
-    .eq('occurrence_key', occurrenceKey)
-    .maybeSingle();
+    .update({
+      notification_id: params.notificationId ?? null,
+      status: params.status,
+      metadata: sanitizeNotificationMetadata(params.metadata),
+    })
+    .eq('occurrence_key', params.occurrenceKey);
 
   if (error) {
     throw error;
   }
-
-  return Boolean(data);
 }
 
 async function listRecipientsForSpecialDate(candidate: SpecialDateCandidate) {
@@ -131,12 +139,19 @@ async function dispatchSpecialDateCandidate(candidate: SpecialDateCandidate): Pr
     notificationsCreated: 0,
     skippedDuplicates: 0,
     skippedByPreferences: 0,
+    skippedWithoutRecipients: 0,
+    dispatchFailures: 0,
     recipientsResolved: 0,
     dispatchResults: [],
   };
 
   const recipients = await listRecipientsForSpecialDate(candidate);
   summary.recipientsResolved = recipients.length;
+
+  if (recipients.length === 0) {
+    summary.skippedWithoutRecipients += 1;
+    return summary;
+  }
 
   for (const userId of recipients) {
     const occurrenceType = getOccurrenceType(candidate.type);
@@ -156,8 +171,19 @@ async function dispatchSpecialDateCandidate(candidate: SpecialDateCandidate): Pr
     };
 
     try {
-      const alreadyCreated = await notificationOccurrenceExists(occurrenceKey);
-      if (alreadyCreated) {
+      const occurrence = await createNotificationOccurrenceIfMissing({
+        occurrenceKey,
+        tipo: occurrenceType,
+        userId,
+        entityType: 'person',
+        entityId: candidate.pessoa.id,
+        occurrenceDate: candidate.occurrenceDate,
+        notificationId: null,
+        status: 'pending',
+        metadata,
+      });
+
+      if (occurrence.duplicate) {
         summary.skippedDuplicates += 1;
         continue;
       }
@@ -178,31 +204,62 @@ async function dispatchSpecialDateCandidate(candidate: SpecialDateCandidate): Pr
 
       summary.dispatchResults.push(...results);
       const status = getDispatchStatus(results);
+      const notificationId = results.find((result) => result.channel === 'interna')?.notificationId ?? null;
 
       if (status === 'disabled_by_preferences') {
         summary.skippedByPreferences += 1;
+        await updateNotificationOccurrence({
+          occurrenceKey,
+          notificationId,
+          status: 'skipped',
+          metadata: {
+            ...metadata,
+            dispatch_status: status,
+          },
+        });
         continue;
       }
 
-      const notificationId = results.find((result) => result.channel === 'interna')?.notificationId ?? null;
-      const occurrence = await createNotificationOccurrenceIfMissing({
+      if (status !== 'sent') {
+        summary.dispatchFailures += 1;
+        await updateNotificationOccurrence({
+          occurrenceKey,
+          notificationId,
+          status: 'failed',
+          metadata: {
+            ...metadata,
+            dispatch_status: status ?? 'missing_dispatch_result',
+          },
+        });
+        continue;
+      }
+
+      await updateNotificationOccurrence({
         occurrenceKey,
-        tipo: occurrenceType,
-        userId,
-        entityType: 'person',
-        entityId: candidate.pessoa.id,
-        occurrenceDate: candidate.occurrenceDate,
         notificationId,
-        status: 'created',
-        metadata,
+        status: 'sent',
+        metadata: {
+          ...metadata,
+          dispatch_status: status,
+        },
       });
 
-      if (occurrence.duplicate) {
-        summary.skippedDuplicates += 1;
-      } else if (occurrence.created && status === 'sent') {
-        summary.notificationsCreated += 1;
-      }
+      summary.notificationsCreated += 1;
     } catch (error) {
+      summary.dispatchFailures += 1;
+      try {
+        await updateNotificationOccurrence({
+          occurrenceKey,
+          status: 'failed',
+          metadata: {
+            ...metadata,
+            dispatch_status: 'failed',
+            error_message: error instanceof Error ? error.message : 'Erro inesperado na rotina manual.',
+          },
+        });
+      } catch (updateError) {
+        console.warn('[Notificações] Falha ao atualizar occurrence após erro:', updateError);
+      }
       console.warn('[Notificações] Falha na rotina manual de datas especiais:', error);
     }
   }
@@ -219,6 +276,8 @@ function mergeSummaries(summaries: DailyNotificationRunSummary[], referenceDate:
       notificationsCreated: acc.notificationsCreated + summary.notificationsCreated,
       skippedDuplicates: acc.skippedDuplicates + summary.skippedDuplicates,
       skippedByPreferences: acc.skippedByPreferences + summary.skippedByPreferences,
+      skippedWithoutRecipients: acc.skippedWithoutRecipients + summary.skippedWithoutRecipients,
+      dispatchFailures: acc.dispatchFailures + summary.dispatchFailures,
       recipientsResolved: acc.recipientsResolved + summary.recipientsResolved,
       dispatchResults: [...acc.dispatchResults, ...summary.dispatchResults],
     }),
@@ -229,17 +288,42 @@ function mergeSummaries(summaries: DailyNotificationRunSummary[], referenceDate:
       notificationsCreated: 0,
       skippedDuplicates: 0,
       skippedByPreferences: 0,
+      skippedWithoutRecipients: 0,
+      dispatchFailures: 0,
       recipientsResolved: 0,
       dispatchResults: [],
     }
   );
 }
 
+async function settleCandidateSummaries(candidates: SpecialDateCandidate[], referenceDate: Date) {
+  const settledSummaries = await Promise.allSettled(candidates.map(dispatchSpecialDateCandidate));
+  return settledSummaries.map((result): DailyNotificationRunSummary => {
+    if (result.status === 'fulfilled') {
+      return result.value;
+    }
+
+    console.warn('[Notificações] Falha ao processar candidato de data especial:', result.reason);
+    return {
+      referenceDate: toDateKey(referenceDate),
+      birthdaysFound: 0,
+      memorialsFound: 0,
+      notificationsCreated: 0,
+      skippedDuplicates: 0,
+      skippedByPreferences: 0,
+      skippedWithoutRecipients: 0,
+      dispatchFailures: 1,
+      recipientsResolved: 0,
+      dispatchResults: [],
+    };
+  });
+}
+
 export async function dispatchBirthdayNotifications(referenceDate = new Date()) {
   const candidates = (await getTodaySpecialDateCandidates(referenceDate)).filter(
     (candidate) => candidate.type === 'aniversario'
   );
-  const summaries = await Promise.all(candidates.map(dispatchSpecialDateCandidate));
+  const summaries = await settleCandidateSummaries(candidates, referenceDate);
   return mergeSummaries(summaries, toDateKey(referenceDate));
 }
 
@@ -247,12 +331,12 @@ export async function dispatchMemorialDateNotifications(referenceDate = new Date
   const candidates = (await getTodaySpecialDateCandidates(referenceDate)).filter(
     (candidate) => candidate.type === 'memoria_falecimento'
   );
-  const summaries = await Promise.all(candidates.map(dispatchSpecialDateCandidate));
+  const summaries = await settleCandidateSummaries(candidates, referenceDate);
   return mergeSummaries(summaries, toDateKey(referenceDate));
 }
 
 export async function runDailyNotificationChecks(referenceDate = new Date()) {
   const candidates = await getTodaySpecialDateCandidates(referenceDate);
-  const summaries = await Promise.all(candidates.map(dispatchSpecialDateCandidate));
+  const summaries = await settleCandidateSummaries(candidates, referenceDate);
   return mergeSummaries(summaries, toDateKey(referenceDate));
 }

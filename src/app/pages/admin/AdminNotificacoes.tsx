@@ -95,6 +95,7 @@ export function AdminNotificacoes() {
   const [creatingTest, setCreatingTest] = useState(false);
   const [runningManualRoutine, setRunningManualRoutine] = useState(false);
   const [manualRoutineSummary, setManualRoutineSummary] = useState<DailyNotificationRunSummary | null>(null);
+  const [manualRoutineError, setManualRoutineError] = useState<string | null>(null);
 
   const loadDiagnostics = async () => {
     try {
@@ -146,9 +147,14 @@ export function AdminNotificacoes() {
   const handleRunManualRoutine = async () => {
     try {
       setRunningManualRoutine(true);
+      setManualRoutineError(null);
       const result = await runDailyNotificationChecks();
       setManualRoutineSummary(result);
       await loadDiagnostics();
+    } catch (error) {
+      setManualRoutineError(
+        error instanceof Error ? error.message : 'Não foi possível executar a rotina manual de notificações.'
+      );
     } finally {
       setRunningManualRoutine(false);
     }
@@ -272,8 +278,14 @@ export function AdminNotificacoes() {
               <p className="mt-3 text-sm text-gray-500">Verificando datas especiais...</p>
             )}
 
+            {manualRoutineError && (
+              <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {manualRoutineError}
+              </p>
+            )}
+
             {manualRoutineSummary && (
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-6">
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-4">
                 <div className="rounded-lg border border-gray-200 bg-white p-3">
                   <p className="text-xs text-gray-500">Aniversários</p>
                   <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.birthdaysFound}</p>
@@ -293,6 +305,16 @@ export function AdminNotificacoes() {
                 <div className="rounded-lg border border-gray-200 bg-white p-3">
                   <p className="text-xs text-gray-500">Preferências</p>
                   <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.skippedByPreferences}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">Sem destinatário</p>
+                  <p className="text-xl font-semibold text-gray-900">
+                    {manualRoutineSummary.skippedWithoutRecipients}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-xs text-gray-500">Falhas</p>
+                  <p className="text-xl font-semibold text-gray-900">{manualRoutineSummary.dispatchFailures}</p>
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-white p-3">
                   <p className="text-xs text-gray-500">Destinatários</p>
