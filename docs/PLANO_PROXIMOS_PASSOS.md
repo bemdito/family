@@ -1,18 +1,17 @@
-Baseado no conteúdo que você enviou para transformar em Markdown. 
-
-````md
 # Plano de retomada dos testes e próximas implementações
 
 ## Objetivo deste documento
 
-Este documento organiza a retomada dos trabalhos após as implementações realizadas em 13/05, com foco em:
+Este documento organiza a retomada dos trabalhos após as implementações realizadas em 13/05 e nas rodadas posteriores, com foco em:
 
 - validar manualmente as funcionalidades recém-implementadas;
 - registrar bugs e observações;
 - priorizar correções;
 - mapear próximas implementações;
 - indicar arquivos prováveis relacionados a cada frente;
-- manter uma ordem racional para desenvolvimento.
+- manter uma ordem racional para desenvolvimento;
+- evitar regressões em fluxos já estabilizados;
+- registrar o que já foi implementado e o que ainda está pendente.
 
 ---
 
@@ -48,6 +47,10 @@ supabase db push
 - Se o build falhar: corrigir antes de qualquer teste manual.
 - Se houver migration pendente: aplicar antes dos testes.
 - Se houver diff inesperado: revisar antes de começar nova implementação.
+- Se houver Edge Function pendente de deploy: validar antes de testar fluxo dependente.
+- Se houver alteração em RLS: testar admin e usuário comum antes de prosseguir.
+- Se houver secrets pendentes para Edge Functions: configurar antes de validar fluxos dependentes.
+- Se houver notificações ou registros reais criados em QA: documentar os IDs antes de limpar.
 
 ---
 
@@ -68,6 +71,7 @@ Preencher antes de iniciar os testes:
 - Navegador:
 - Usuário admin:
 - Usuário comum:
+- Observações:
 ```
 
 ## Comandos úteis
@@ -78,6 +82,16 @@ git status
 npm run build
 git diff --check
 supabase db push
+```
+
+## Comandos úteis para Edge Functions
+
+Quando a frente testada envolver Edge Functions:
+
+```bash
+supabase functions list
+supabase functions deploy send-notification-email
+supabase functions deploy run-daily-notifications
 ```
 
 ## Consultas SQL úteis
@@ -120,11 +134,67 @@ order by created_at desc
 limit 20;
 ```
 
+### Eventos pessoais
+
+```sql
+select id, pessoa_id, tipo, titulo, data_evento, local, ordem, created_at
+from public.person_events
+order by created_at desc
+limit 30;
+```
+
+### Logs de dispatch de notificações
+
+```sql
+select id, notification_id, user_id, tipo, canal, status, provider, error_message, metadata, created_at
+from public.notification_dispatch_logs
+order by created_at desc
+limit 30;
+```
+
+### Ocorrências de notificações recorrentes
+
+```sql
+select id, occurrence_key, tipo, user_id, entity_type, entity_id, occurrence_date, status, metadata, created_at
+from public.notification_occurrences
+order by created_at desc
+limit 30;
+```
+
+### Notificações recentes
+
+```sql
+select id, user_id, titulo, mensagem, tipo, canal, lida, metadata, created_at
+from public.notificacoes_usuario
+order by created_at desc
+limit 30;
+```
+
+### Preferências de notificação
+
+```sql
+select id, user_id, receber_aniversarios, receber_datas_memoria, receber_eventos, receber_avisos_gerais, receber_email, receber_push, receber_whatsapp, updated_at
+from public.preferencias_notificacao
+order by updated_at desc nulls last
+limit 30;
+```
+
+### Registros de pessoa falecida e locais no exterior
+
+```sql
+select id, nome_completo, falecido, data_falecimento, local_falecimento, local_nascimento, local_nascimento_exterior, local_falecimento_exterior
+from public.pessoas
+order by updated_at desc nulls last
+limit 30;
+```
+
 ---
 
 # 3. Ordem racional dos testes manuais
 
 A ordem abaixo evita testar uma funcionalidade dependente antes de confirmar suas bases.
+
+---
 
 ## 3.1 Login e permissões
 
@@ -141,6 +211,7 @@ Confirmar que admin e usuário comum têm acessos distintos.
 - [ ] Usuário comum não acessa `/admin/atividades`.
 - [ ] Usuário comum não acessa `/admin/integridade`.
 - [ ] Usuário comum não acessa `/admin/solicitacoes-vinculos`.
+- [ ] Usuário comum não acessa `/admin/notificacoes`.
 
 ### Arquivos prováveis
 
@@ -153,7 +224,76 @@ src/app/routes.tsx
 
 ---
 
-## 3.2 Minha Árvore
+## 3.2 Formulários de pessoa e rascunhos
+
+### Objetivo
+
+Confirmar que os formulários de pessoa não perdem dados e que criação/edição usam fluxos consistentes.
+
+### Checklist admin
+
+- [ ] Abrir `/admin/pessoas/nova`.
+- [ ] Preencher dados básicos.
+- [ ] Preencher datas e locais.
+- [ ] Marcar pessoa falecida sem data/local de falecimento.
+- [ ] Preencher local de nascimento brasileiro no formato `Cidade/UF`.
+- [ ] Marcar local no exterior e preencher `Cidade (País)`.
+- [ ] Adicionar rede social com o editor padronizado.
+- [ ] Adicionar evento pessoal.
+- [ ] Adicionar arquivo histórico.
+- [ ] Visualizar arquivo histórico sem perder dados.
+- [ ] Adicionar relacionamento pendente.
+- [ ] Adicionar cônjuge pendente com dados de casamento.
+- [ ] Sair da página e cancelar alerta de navegação.
+- [ ] Confirmar que os dados continuam no formulário.
+- [ ] Recarregar página e confirmar rascunho, quando aplicável.
+- [ ] Salvar.
+- [ ] Confirmar que rascunho foi removido após salvar.
+
+### Checklist edição
+
+- [ ] Abrir `/admin/pessoas/:id/editar`.
+- [ ] Confirmar que todos os campos carregam.
+- [ ] Editar bio, contato, redes sociais, local exterior, pessoa falecida e eventos.
+- [ ] Visualizar arquivo histórico.
+- [ ] Confirmar que alterações locais não foram apagadas.
+- [ ] Salvar.
+- [ ] Reabrir e confirmar persistência.
+
+### Pontos específicos a observar
+
+- [ ] O fluxo de adicionar relacionamento não usa modal de confirmação indevido.
+- [ ] O seletor de relacionamento não trava a página.
+- [ ] Relacionamentos pendentes só são persistidos ao clicar no botão principal de salvar.
+- [ ] O rascunho preserva `socialProfiles`.
+- [ ] O rascunho preserva eventos pessoais.
+- [ ] O rascunho preserva dados conjugais pendentes.
+- [ ] O preview de arquivos históricos não dispara submit do formulário.
+- [ ] Botões internos usam `type="button"` quando não devem submeter o formulário.
+
+### Arquivos prováveis
+
+```txt
+src/app/pages/admin/AdminPessoaForm.tsx
+src/app/components/person/PersonFormSection.tsx
+src/app/components/person/PersonBasicInfoFields.tsx
+src/app/components/person/PersonDatesLocationsFields.tsx
+src/app/components/person/PersonBioFields.tsx
+src/app/components/person/PersonContactFields.tsx
+src/app/components/person/PersonPrivacyFields.tsx
+src/app/components/person/SocialProfilesEditor.tsx
+src/app/components/person/PersonEventsEditor.tsx
+src/app/components/relationships/MarriageDetailsEditor.tsx
+src/app/components/ArquivosHistoricos.tsx
+src/app/utils/personFields.ts
+src/app/utils/searchText.ts
+src/app/services/personEventsService.ts
+src/app/services/dataService.ts
+```
+
+---
+
+## 3.3 Minha Árvore
 
 ### Objetivo
 
@@ -169,6 +309,8 @@ Confirmar que a árvore pessoal continua funcionando e que usuários comuns não
 - [ ] Confirmar que a árvore real não muda imediatamente.
 - [ ] Confirmar que a solicitação aparece em `relationship_change_requests`.
 - [ ] Confirmar que logs são registrados em `activity_logs`.
+- [ ] Confirmar que busca por pessoa ignora acentuação.
+- [ ] Confirmar que usuário comum não consegue alterar relação real diretamente.
 
 ### Arquivos prováveis
 
@@ -178,11 +320,12 @@ src/app/services/relationshipChangeRequestService.ts
 src/app/services/dataService.ts
 src/app/services/activityLogService.ts
 src/app/components/FamilyTree/modals/AddConnectionModal.tsx
+src/app/utils/searchText.ts
 ```
 
 ---
 
-## 3.3 Genealogia
+## 3.4 Genealogia
 
 ### Objetivo
 
@@ -198,6 +341,8 @@ Confirmar que a view Genealogia mostra o escopo pessoal em layout por gerações
 - [ ] Confirmar que conectores não ficam soltos após filtros.
 - [ ] Confirmar que cônjuges aparecem abaixo/acima conforme layout definido.
 - [ ] Confirmar que anéis de casamento aparecem entre cônjuges.
+- [ ] Confirmar que pessoa falecida é tratada corretamente.
+- [ ] Confirmar que status conjugal considera viuvez quando aplicável.
 
 ### Arquivos prováveis
 
@@ -207,12 +352,14 @@ src/app/components/FamilyTree/layouts/genealogyColumnsLayout.ts
 src/app/components/FamilyTree/GenealogyFamilyConnectorNode.tsx
 src/app/components/FamilyTree/GenealogySpouseEdge.tsx
 src/app/components/FamilyTree/layouts/filterPersonalTreeScope.ts
+src/app/components/FamilyTree/utils/personCardText.ts
+src/app/utils/personFields.ts
 src/app/pages/Home.tsx
 ```
 
 ---
 
-## 3.4 Visão Completa
+## 3.5 Visão Completa
 
 ### Objetivo
 
@@ -226,6 +373,8 @@ Confirmar que a view Visão Completa mostra todas as pessoas cadastradas usando 
 - [ ] Confirmar conectores pais-filhos.
 - [ ] Confirmar anéis entre cônjuges.
 - [ ] Confirmar filtros funcionando.
+- [ ] Confirmar busca sem diferenciar acentuação.
+- [ ] Confirmar que filtros não deixam conectores/anéis soltos.
 
 ### Arquivos prováveis
 
@@ -234,11 +383,12 @@ src/app/components/FamilyTree/FamilyTree.tsx
 src/app/components/FamilyTree/ViewModeToggle.tsx
 src/app/components/FamilyTree/layouts/genealogyColumnsLayout.ts
 src/app/pages/Home.tsx
+src/app/utils/searchText.ts
 ```
 
 ---
 
-## 3.5 Modal do anel 💍
+## 3.6 Modal do anel 💍
 
 ### Objetivo
 
@@ -259,8 +409,11 @@ Confirmar que o modal conjugal abre corretamente ao clicar no anel entre cônjug
 - [ ] Adicionar arquivo histórico de relacionamento.
 - [ ] Salvar.
 - [ ] Confirmar que `relacionamento_id` foi salvo em `arquivos_historicos`.
+- [ ] Confirmar que `pessoa_id` ficou nulo em arquivo de relacionamento.
 - [ ] Confirmar que URL salva é Storage, não base64.
 - [ ] Confirmar `historical_file.added` em `activity_logs`.
+- [ ] Confirmar notificação interna de novo registro histórico, se houver destinatário relevante.
+- [ ] Confirmar log em `notification_dispatch_logs`, se notificação for disparada.
 
 ### Checklist como usuário comum
 
@@ -282,12 +435,13 @@ src/app/components/FamilyTree/modals/ViewMarriageModal.tsx
 src/app/components/ArquivosHistoricos.tsx
 src/app/services/arquivosHistoricosService.ts
 src/app/services/storageService.ts
+src/app/services/notificationTriggersService.ts
 src/app/pages/Home.tsx
 ```
 
 ---
 
-## 3.6 Upload de arquivo histórico de relacionamento
+## 3.7 Upload de arquivo histórico de relacionamento
 
 ### Objetivo
 
@@ -301,7 +455,13 @@ Confirmar que arquivos históricos ligados a relacionamentos são salvos correta
 - [ ] Confirmar que `relacionamento_id` está preenchido.
 - [ ] Confirmar que `pessoa_id` não foi usado indevidamente.
 - [ ] Confirmar log `historical_file.added`.
+- [ ] Confirmar notificação interna de novo registro histórico, se houver destinatário.
+- [ ] Confirmar dispatch log da notificação, se houver.
 - [ ] Testar edição de título/descrição/ano.
+- [ ] Testar preview de imagem.
+- [ ] Testar preview de PDF.
+- [ ] Testar download explícito.
+- [ ] Testar abrir em nova aba.
 - [ ] Testar remoção do registro.
 - [ ] Confirmar logs `historical_file.updated` e `historical_file.removed`, quando aplicável.
 
@@ -315,6 +475,13 @@ order by created_at desc
 limit 20;
 ```
 
+```sql
+select id, notification_id, user_id, tipo, canal, status, provider, error_message, metadata, created_at
+from public.notification_dispatch_logs
+order by created_at desc
+limit 20;
+```
+
 ### Arquivos prováveis
 
 ```txt
@@ -322,12 +489,14 @@ src/app/components/ArquivosHistoricos.tsx
 src/app/components/FamilyTree/modals/ViewMarriageModal.tsx
 src/app/services/arquivosHistoricosService.ts
 src/app/services/storageService.ts
+src/app/services/notificationTriggersService.ts
+src/app/services/notificationDispatchService.ts
 supabase/migrations/20260514120000_add_relationship_historical_files.sql
 ```
 
 ---
 
-## 3.7 Solicitações de vínculos
+## 3.8 Solicitações de vínculos
 
 ### Objetivo
 
@@ -338,6 +507,7 @@ Confirmar que usuários comuns criam solicitações e admins revisam.
 - [ ] Solicitar criação de vínculo.
 - [ ] Solicitar remoção de vínculo.
 - [ ] Solicitar correção de vínculo conjugal.
+- [ ] Preencher dados conjugais em cônjuge, quando aplicável.
 - [ ] Confirmar toast ou feedback de envio.
 - [ ] Confirmar que relacionamento real não muda imediatamente.
 - [ ] Confirmar registro em `relationship_change_requests`.
@@ -363,6 +533,7 @@ src/app/pages/admin/AdminSolicitacoesVinculos.tsx
 src/app/pages/MinhaArvore.tsx
 src/app/pages/MeusVinculos.tsx
 src/app/components/FamilyTree/modals/AddConnectionModal.tsx
+src/app/components/relationships/MarriageDetailsEditor.tsx
 src/app/services/dataService.ts
 src/app/services/activityLogService.ts
 src/app/routes.tsx
@@ -371,7 +542,7 @@ supabase/migrations/20260513173000_create_relationship_change_requests.sql
 
 ---
 
-## 3.8 Histórico de atividades
+## 3.9 Histórico de atividades
 
 ### Objetivo
 
@@ -388,8 +559,10 @@ Confirmar que ações relevantes estão sendo registradas.
 - [ ] Confirmar logs de privacidade.
 - [ ] Confirmar logs de notificações.
 - [ ] Confirmar logs de arquivos históricos.
+- [ ] Confirmar logs de eventos pessoais.
 - [ ] Confirmar logs de solicitações de vínculo.
 - [ ] Confirmar que metadata não contém URL completa, base64, telefone, endereço ou e-mail.
+- [ ] Confirmar que logs de notification dispatch ficam no painel de notificações, não necessariamente em activity logs.
 
 ### Arquivos prováveis
 
@@ -399,15 +572,17 @@ src/app/services/activityLogService.ts
 src/app/services/dataService.ts
 src/app/services/memberProfileService.ts
 src/app/services/arquivosHistoricosService.ts
+src/app/services/personEventsService.ts
 src/app/services/userEngagementService.ts
 src/app/services/relationshipChangeRequestService.ts
+src/app/services/notificationDispatchService.ts
 src/app/types/index.ts
 supabase/migrations/20260513143000_create_activity_logs.sql
 ```
 
 ---
 
-## 3.9 Tela de integridade
+## 3.10 Tela de integridade
 
 ### Objetivo
 
@@ -439,6 +614,73 @@ src/app/services/dataService.ts
 src/app/services/activityLogService.ts
 src/app/services/relationshipChangeRequestService.ts
 src/app/lib/supabaseClient.ts
+```
+
+---
+
+## 3.11 Notificações
+
+### Objetivo
+
+Confirmar que notificações internas, preferências, logs e rotinas manuais funcionam corretamente.
+
+### Checklist usuário comum
+
+- [ ] Acessar `/notificacoes`.
+- [ ] Confirmar lista de notificações.
+- [ ] Confirmar estado vazio, se não houver notificações.
+- [ ] Marcar notificação como lida.
+- [ ] Marcar todas como lidas.
+- [ ] Remover notificação.
+- [ ] Alterar preferências.
+- [ ] Recarregar a página e confirmar persistência.
+- [ ] Confirmar que usuário comum não acessa `/admin/notificacoes`.
+
+### Checklist admin
+
+- [ ] Acessar `/admin/notificacoes`.
+- [ ] Confirmar cards de resumo.
+- [ ] Confirmar notificações recentes.
+- [ ] Confirmar preferências recentes.
+- [ ] Confirmar diagnóstico de e-mail.
+- [ ] Confirmar logs de dispatch.
+- [ ] Usar botão “Teste interno”.
+- [ ] Confirmar que teste interno cria notificação interna para o admin.
+- [ ] Confirmar que teste interno não envia e-mail real.
+- [ ] Rodar rotina manual de aniversários/memórias.
+- [ ] Confirmar resumo da rotina.
+- [ ] Rodar rotina manual novamente.
+- [ ] Confirmar que não duplica notificações.
+- [ ] Confirmar registros em `notification_occurrences`.
+- [ ] Confirmar logs em `notification_dispatch_logs`.
+
+### Gatilhos a testar
+
+- [ ] Novo arquivo histórico de pessoa.
+- [ ] Novo arquivo histórico de relacionamento.
+- [ ] Novo vínculo/primeiro acesso confirmado.
+- [ ] Nova resposta no fórum.
+- [ ] Novo comentário no fórum.
+- [ ] Aniversário do dia.
+- [ ] Data de memória/falecimento do dia.
+
+### Arquivos prováveis
+
+```txt
+src/app/pages/Notificacoes.tsx
+src/app/pages/admin/AdminNotificacoes.tsx
+src/app/services/userEngagementService.ts
+src/app/services/notificationAdminService.ts
+src/app/services/notificationDispatchService.ts
+src/app/services/notificationRecipientsService.ts
+src/app/services/notificationTriggersService.ts
+src/app/services/notificationScheduledService.ts
+src/app/utils/notificationDateRules.ts
+src/app/services/activityLogService.ts
+src/app/types/index.ts
+supabase/functions/send-notification-email
+supabase/functions/run-daily-notifications
+supabase/migrations
 ```
 
 ---
@@ -481,8 +723,10 @@ src/app/lib/supabaseClient.ts
 - Impede login.
 - Impede acesso à árvore.
 - Quebra build.
-- Permite usuário comum acessar/admin ou alterar dados restritos.
+- Permite usuário comum acessar admin ou alterar dados restritos.
 - Causa perda de dados.
+- Expõe secrets, tokens ou service role no frontend.
+- Dispara e-mails reais em massa sem confirmação.
 
 ### P1 - Alto
 
@@ -492,6 +736,9 @@ src/app/lib/supabaseClient.ts
 - Upload falha.
 - Modal conjugal não abre.
 - Admin não consegue aprovar/rejeitar solicitação.
+- Notificação interna não é criada por gatilho principal.
+- Rotina de aniversários/memórias duplica notificações.
+- RLS permite escrita indevida.
 
 ### P2 - Médio
 
@@ -500,6 +747,9 @@ src/app/lib/supabaseClient.ts
 - Filtro não funciona.
 - Status visual inconsistente.
 - Toast/feedback confuso.
+- Notificação aparece sem link quando deveria ter.
+- Logs de dispatch incompletos.
+- Preview/download de arquivo histórico falha em algum formato.
 
 ### P3 - Baixo
 
@@ -507,6 +757,7 @@ src/app/lib/supabaseClient.ts
 - Ajuste fino de layout.
 - Pequeno ruído em log.
 - Melhorias de usabilidade.
+- Documentação incompleta.
 
 ---
 
@@ -522,6 +773,15 @@ src/app/lib/supabaseClient.ts
 - [ ] Confirmar que `/admin/integridade` não altera dados.
 - [ ] Confirmar que `/admin/solicitacoes-vinculos` aprova/rejeita corretamente.
 - [ ] Confirmar que `/admin/atividades` lista logs recentes corretamente.
+- [ ] Testar preview real de imagem histórica.
+- [ ] Testar preview real de PDF histórico.
+- [ ] Testar download explícito de arquivo histórico.
+- [ ] Testar notificação por upload histórico via UI.
+- [ ] Testar notificação por fórum via UI.
+- [ ] Testar notificação por novo vínculo/primeiro acesso.
+- [ ] Testar aniversários/memórias com pessoa de data correspondente ao dia.
+- [ ] Confirmar deduplicação real em `notification_occurrences`.
+- [ ] Confirmar que metadata de logs não contém dados sensíveis.
 
 ## Pendências técnicas
 
@@ -531,6 +791,15 @@ src/app/lib/supabaseClient.ts
 - [ ] Remover campo técnico `lado` dos `changed_fields` do histórico.
 - [ ] Implementar lazy loading das rotas admin e bibliotecas pesadas.
 - [ ] Avaliar limpeza ou migração futura de arquivos antigos em base64 para Storage.
+- [ ] Avaliar persistência futura de múltiplas redes sociais em tabela própria.
+- [ ] Avaliar upload por evento pessoal.
+- [ ] Avaliar privacidade por evento pessoal.
+- [ ] Avaliar exportação PDF de eventos/timeline.
+- [ ] Confirmar ou implementar Edge Function/agendamento diário `run-daily-notifications`.
+- [ ] Confirmar ou implementar envio real de e-mail por `send-notification-email`.
+- [ ] Documentar arquitetura de notificações em arquivo próprio.
+- [ ] Criar QA final da frente de notificações.
+- [ ] Push real e WhatsApp real seguem como futuras implementações.
 
 ---
 
@@ -546,6 +815,9 @@ Corrigir antes de novas funcionalidades:
 4. RLS permitindo escrita indevida.
 5. Perda ou corrupção de dados.
 6. Solicitações de vínculo alterando relacionamento real antes de aprovação.
+7. Exposição de secrets ou service role.
+8. Envio real de e-mail sem confirmação/configuração adequada.
+9. Rotina recorrente duplicando notificações.
 
 ## 6.2 Segundo: fluxos principais
 
@@ -554,6 +826,10 @@ Corrigir antes de novas funcionalidades:
 3. Solicitações de vínculo.
 4. Histórico de atividades.
 5. Tela de integridade.
+6. Formulários de pessoa e rascunhos.
+7. Eventos pessoais.
+8. Central de notificações.
+9. Rotina de aniversários/memórias.
 
 ## 6.3 Terceiro: melhorias técnicas
 
@@ -562,12 +838,53 @@ Corrigir antes de novas funcionalidades:
 3. Filtros na integridade.
 4. Limpeza de metadata.
 5. Migração futura de base64 legado.
+6. E-mail real de notificações.
+7. Edge Function/cron de notificações.
+8. Documentação final das frentes implementadas.
 
 ---
 
 # 7. Próximas implementações desejadas
 
 ## 7.1 Notificações
+
+### Status
+
+Parcialmente implementado.
+
+### Já implementado ou consolidado
+
+- Página `/notificacoes`.
+- Preferências de notificação por usuário.
+- Painel admin `/admin/notificacoes`.
+- Diagnóstico admin de notificações.
+- Logs de dispatch.
+- Dispatch central de notificações.
+- Canais diferenciados:
+  - interna;
+  - email;
+  - push;
+  - WhatsApp.
+- Canal interno funcional.
+- Push e WhatsApp marcados como `not_configured`/`skipped`.
+- Teste interno para admin.
+- Gatilhos internos para:
+  - novo arquivo histórico;
+  - novo vínculo/primeiro acesso;
+  - nova resposta no fórum;
+  - novo comentário no fórum.
+- Rotina manual de aniversários e datas de memória.
+- Deduplicação via `notification_occurrences`.
+
+### Ainda pendente ou sem confirmação completa
+
+- Edge Function/agendamento diário `run-daily-notifications`.
+- Envio real de e-mail por `send-notification-email`.
+- QA final da frente de notificações.
+- Documentação final de notificações.
+- Teste completo via UI dos gatilhos de arquivo/fórum.
+- Teste completo com datas reais de aniversário/memória.
+- Limpeza de notificações/logs criados em testes, se desejado.
 
 ### Objetivo
 
@@ -585,27 +902,48 @@ Diagnosticar e ajustar o funcionamento das notificações por e-mail e pela áre
 - Evento histórico da família.
 - Preferências de notificação por usuário.
 - Logs de alteração de preferências.
+- Logs de dispatch.
+- Deduplicação de notificações recorrentes.
+- Segurança de RPCs e Edge Functions.
+- Metadata sanitizada.
 
 ### Arquivos prováveis
 
 ```txt
 src/app/pages/Notificacoes.tsx
+src/app/pages/admin/AdminNotificacoes.tsx
 src/app/services/userEngagementService.ts
+src/app/services/notificationAdminService.ts
+src/app/services/notificationDispatchService.ts
+src/app/services/notificationRecipientsService.ts
+src/app/services/notificationTriggersService.ts
+src/app/services/notificationScheduledService.ts
+src/app/utils/notificationDateRules.ts
 src/app/services/activityLogService.ts
 src/app/types/index.ts
+supabase/functions/send-notification-email
+supabase/functions/run-daily-notifications
 supabase/migrations
 ```
 
 ### Sugestões
 
-- Criar painel admin para visualizar filas/estado das notificações.
+- Finalizar QA da frente de notificações.
+- Confirmar ou implementar Edge Function/cron.
+- Confirmar ou implementar e-mail real.
 - Registrar logs quando notificações forem disparadas.
-- Diferenciar notificação interna, e-mail, push e WhatsApp.
-- Verificar se já existe cron/edge function ou se será necessário implementar.
+- Diferenciar claramente notificação interna, e-mail, push e WhatsApp.
+- Documentar configuração de secrets para e-mail.
+- Documentar como rodar/verificar rotina diária.
+- Não ativar e-mail real sem teste controlado.
 
 ---
 
 ## 7.2 Astrologia e acontecimentos do nascimento
+
+### Status
+
+Não implementado.
 
 ### Objetivo
 
@@ -624,6 +962,9 @@ Verificar se áreas de astrologia e acontecimentos do dia de nascimento estão s
 - Se existe flag de geração.
 - Se existe data da última geração.
 - Se há fallback quando não existe data de nascimento.
+- Se há chamada de IA no frontend.
+- Se há custo ou risco de geração repetida.
+- Se admin deve poder regenerar.
 
 ### Arquivos prováveis
 
@@ -643,18 +984,36 @@ supabase/migrations
   - `tipo`
   - `conteudo`
   - `fonte`
+  - `status`
+  - `prompt_version`
+  - `input_hash`
   - `generated_at`
   - `updated_at`
+  - `metadata`
 - Tipos possíveis:
   - `astrology`
   - `birth_date_events`
   - `historical_context`
+- Criar botão admin para “gerar conteúdo”.
 - Criar botão admin para “regenerar conteúdo”.
 - Evitar gerar IA automaticamente em todo carregamento de perfil.
+- Preferir Edge Function para geração de IA, sem expor chave no frontend.
+
+### Ordem sugerida de prompts
+
+1. Diagnóstico do estado atual.
+2. Schema e service de `person_generated_insights`.
+3. Exibição persistida no perfil.
+4. Geração/regeneração controlada por admin.
+5. QA final, logs e documentação.
 
 ---
 
 ## 7.3 Linha do tempo do usuário
+
+### Status
+
+Não implementado.
 
 ### Objetivo
 
@@ -670,6 +1029,7 @@ Criar uma timeline da pessoa com eventos relevantes.
 - Falecimento.
 - Arquivos históricos.
 - Eventos históricos da família.
+- Eventos pessoais já cadastrados em `person_events`.
 
 ### Arquivos prováveis
 
@@ -678,7 +1038,9 @@ src/app/pages/PersonProfile.tsx
 src/app/components/FamilyTree/modals/ViewMarriageModal.tsx
 src/app/services/dataService.ts
 src/app/services/arquivosHistoricosService.ts
+src/app/services/personEventsService.ts
 src/app/types/index.ts
+src/app/utils/familyDates.ts
 ```
 
 ### Sugestões
@@ -697,6 +1059,7 @@ src/app/utils/buildPersonTimeline.ts
 
 - Não criar tabela inicialmente, se a timeline puder ser derivada dos dados existentes.
 - Criar persistência apenas para eventos manuais/customizados.
+- Usar `person_events` para eventos pessoais já cadastrados.
 
 ### Primeira versão sugerida
 
@@ -704,6 +1067,9 @@ src/app/utils/buildPersonTimeline.ts
 - Eventos ordenados por data.
 - Cards simples.
 - Sem edição manual.
+- Sem nova tabela.
+- Sem upload por evento.
+- Sem exportação PDF.
 
 ### Versão futura
 
@@ -712,9 +1078,20 @@ src/app/utils/buildPersonTimeline.ts
 - Privacidade por evento.
 - Exportação em PDF.
 
+### Ordem sugerida de prompts
+
+1. Diagnóstico e modelagem da timeline derivada.
+2. Utilitário `buildPersonTimeline`.
+3. Componente `PersonTimeline` no perfil.
+4. QA, ajustes visuais e documentação.
+
 ---
 
 ## 7.4 Entrar em contato por WhatsApp
+
+### Status
+
+Não implementado.
 
 ### Objetivo
 
@@ -759,6 +1136,10 @@ https://wa.me/55NUMERO
 ---
 
 ## 7.5 Grau de parentesco/vínculo
+
+### Status
+
+Não implementado.
 
 ### Objetivo
 
@@ -815,6 +1196,10 @@ Grau: bisavô
 
 ## 7.6 Selecionar área para PDF/impressão
 
+### Status
+
+Não implementado.
+
 ### Objetivo
 
 Implementar funcionalidade para selecionar área que o usuário deseja salvar como PDF ou imprimir.
@@ -854,6 +1239,10 @@ src/app/utils
 ---
 
 ## 7.7 Legendas visuais da árvore
+
+### Status
+
+Não implementado.
 
 ### Objetivo
 
@@ -903,6 +1292,10 @@ src/app/components/FamilyTree/TreeLegend.tsx
 
 ## 7.8 Favoritos em todo o site
 
+### Status
+
+Não implementado nesta rodada.
+
 ### Objetivo
 
 Implementar botão de estrela em páginas, modais, tópicos de fórum, views personalizadas e outras áreas para o usuário favoritar conteúdos.
@@ -950,6 +1343,10 @@ src/app/components/FavoriteButton.tsx
 
 ## 7.9 Página de favoritos
 
+### Status
+
+Não implementado nesta rodada.
+
 ### Objetivo
 
 Testar se a página de favoritos está armazenando e exibindo todo o conteúdo salvo pelo usuário.
@@ -984,6 +1381,10 @@ src/app/types/index.ts
 
 ## 7.10 Responsividade/mobile
 
+### Status
+
+Não implementado nesta rodada.
+
 ### Objetivo
 
 Configurar e testar visualização mobile das páginas.
@@ -998,7 +1399,9 @@ Configurar e testar visualização mobile das páginas.
 - Perfil de pessoa.
 - Meus Dados.
 - Meus Vínculos.
+- Notificações.
 - Admin Dashboard.
+- Admin Notificações.
 - Admin Integridade.
 - Admin Solicitações de Vínculos.
 - Admin Atividades.
@@ -1010,8 +1413,10 @@ src/app/pages/Home.tsx
 src/app/pages/MinhaArvore.tsx
 src/app/pages/MeusDados.tsx
 src/app/pages/MeusVinculos.tsx
+src/app/pages/Notificacoes.tsx
 src/app/pages/PersonProfile.tsx
 src/app/pages/admin/AdminDashboard.tsx
+src/app/pages/admin/AdminNotificacoes.tsx
 src/app/pages/admin/AdminIntegridade.tsx
 src/app/pages/admin/AdminSolicitacoesVinculos.tsx
 src/app/pages/admin/AdminAtividades.tsx
@@ -1075,6 +1480,7 @@ genealogia
 storage
 rls
 qa
+notificacoes
 ```
 
 ---
@@ -1094,97 +1500,100 @@ Com colunas:
 |---|---|---|---|
 | Ver árvore | Sim | Sim | Depende |
 | Editar pessoa | Sim | Própria pessoa | Não |
-| Criar relacionamento | Sim | Solicita | Não |
-| Upload arquivo pessoa | Sim | Própria pessoa | Não |
-| Upload arquivo relacionamento | Sim | Não | Não |
+| Editar relacionamento real | Sim | Não | Não |
+| Solicitar vínculo | Sim | Sim | Não |
 | Ver histórico global | Sim | Não | Não |
+| Ver notificações próprias | Sim | Sim | Não |
+| Ver logs de notificações | Sim | Não | Não |
 ```
 
 ---
 
-## 8.4 Criar painel de saúde técnica
+## 8.4 Criar documentação específica de notificações
 
-Futuro painel admin com:
+Criar arquivo:
 
-- última migration aplicada;
-- versão/commit atual;
-- status de Storage;
-- contagem de logs;
-- contagem de solicitações pendentes;
-- últimas falhas registradas;
-- tamanho aproximado de dados legados base64.
+```txt
+docs/NOTIFICACOES.md
+```
 
----
+Conteúdo sugerido:
 
-## 8.5 Criar testes automatizados mínimos
-
-Sugestão inicial:
-
-- teste de `getGenealogyMarriageStatus`;
-- teste de deduplicação de solicitações;
-- teste de sanitização de activity logs;
-- teste de classificação de URLs Storage/base64;
-- teste de build de timeline futura.
-
----
-
-# 9. Ordem sugerida para desenvolvimento após QA
-
-## Fase 1 - Correções críticas pós-teste
-
-1. Corrigir bugs do modal 💍.
-2. Corrigir bugs de `/admin/integridade`.
-3. Corrigir bugs de solicitações de vínculos.
-4. Corrigir logs ausentes ou metadata sensível.
-5. Corrigir problemas de RLS/permissão.
-
-## Fase 2 - Estabilização técnica
-
-1. Evitar uploads órfãos no Storage.
-2. Remover `lado` dos `changed_fields`.
-3. Refinar `/admin/integridade` com filtros.
-4. Implementar lazy loading.
-5. Criar checklist de QA permanente.
-
-## Fase 3 - Funcionalidades de engajamento
-
-1. Notificações.
-2. Favoritos.
-3. Página de favoritos.
-4. WhatsApp.
-
-## Fase 4 - Funcionalidades de conteúdo/perfil
-
-1. Astrologia e acontecimentos do nascimento.
-2. Linha do tempo.
-3. Grau de parentesco.
-4. Legendas visuais.
-5. Exportação PDF/impressão.
-
-## Fase 5 - Mobile
-
-1. Ajustes mobile das páginas públicas.
-2. Ajustes mobile da árvore.
-3. Ajustes mobile de modais.
-4. Ajustes mobile do admin.
+- arquitetura;
+- tabelas;
+- services;
+- Edge Functions;
+- canais ativos;
+- canais futuros;
+- preferências;
+- logs;
+- rotina de aniversários/memórias;
+- como testar;
+- como configurar secrets;
+- como verificar cron/agendamento;
+- limitações conhecidas.
 
 ---
 
-# 10. Checklist final para encerrar a rodada de testes
+## 8.5 Criar documentação de eventos pessoais
 
-- [ ] `npm run build` passou.
-- [ ] `git diff --check` passou.
-- [ ] Supabase remoto atualizado.
-- [ ] Login admin testado.
-- [ ] Login usuário comum testado.
-- [ ] Genealogia testada.
-- [ ] Visão Completa testada.
-- [ ] Modal 💍 testado.
-- [ ] Upload de arquivo histórico de relacionamento testado.
-- [ ] Solicitações de vínculos testadas.
-- [ ] Histórico de atividades testado.
-- [ ] Integridade testada.
-- [ ] Bugs registrados.
-- [ ] Prioridades definidas.
-- [ ] Próximo prompt definido.
-````
+Criar arquivo:
+
+```txt
+docs/EVENTOS_PESSOAIS.md
+```
+
+Conteúdo sugerido:
+
+- tabela `person_events`;
+- tipos de evento;
+- como editar no admin;
+- como aparece no perfil;
+- logs;
+- futuras integrações com timeline.
+
+---
+
+## 8.6 Criar documentação de arquivos históricos
+
+Criar arquivo:
+
+```txt
+docs/ARQUIVOS_HISTORICOS.md
+```
+
+Conteúdo sugerido:
+
+- arquivos de pessoa;
+- arquivos de relacionamento;
+- Storage;
+- base64 legado;
+- preview;
+- download;
+- permissões;
+- logs;
+- pendências de uploads órfãos.
+
+---
+
+## 8.7 Criar documentação de formulários de pessoa
+
+Criar arquivo:
+
+```txt
+docs/FORMULARIOS_PESSOA.md
+```
+
+Conteúdo sugerido:
+
+- rascunhos;
+- redes sociais;
+- pessoa falecida;
+- locais no exterior;
+- eventos pessoais;
+- arquivos históricos;
+- relacionamentos pendentes;
+- dados conjugais;
+- diferenças entre criação e edição.
+
+---
