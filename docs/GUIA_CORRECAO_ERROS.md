@@ -1400,6 +1400,25 @@ supabase/migrations/20260514201000_create_notification_dispatch_rpc.sql
   - token;
   - secrets.
 
+#### Link WhatsApp no perfil não aparece
+
+- Verificar se a pessoa possui telefone com DDD e formato válido.
+- Verificar a normalização em `src/app/utils/whatsapp.ts`.
+- Verificar se `permitir_exibir_telefone` ou `permitir_mensagens_whatsapp` está verdadeiro.
+- Verificar se `PersonDataView.tsx` usa `canUseWhatsAppContact`.
+
+#### Link WhatsApp quebra ou abre número incorreto
+
+- Verificar `normalizePhoneForWhatsApp` e `buildWhatsAppUrl` em `src/app/utils/whatsapp.ts`.
+- Confirmar se o telefone tem DDD ou DDI plausível.
+- Não montar URL `wa.me` manualmente fora do helper.
+
+#### Telefone aparece indevidamente no perfil
+
+- Verificar a regra `canUseWhatsAppContact`.
+- Verificar o uso em `src/app/components/person/PersonDataView.tsx`.
+- Lembrar que a regra atual protege a UI; RLS forte para ocultar telefone no banco exige frente própria.
+
 ---
 
 ## 29. Notificações — Destinatários e gatilhos
@@ -1689,6 +1708,129 @@ unique constraint
 deduplicação de destinatários
 excludeActor
 ```
+
+### Linha do tempo não aparece no perfil
+
+Referência detalhada:
+
+```txt
+docs/TIMELINE.md
+```
+
+Verificar:
+
+```txt
+src/app/pages/PersonProfile.tsx
+src/app/components/Timeline/PersonTimeline.tsx
+src/app/utils/buildPersonTimeline.ts
+pessoa.data_nascimento
+pessoa.data_falecimento
+person_events
+arquivos_historicos
+```
+
+Se o componente aparece vazio, confirmar se a pessoa possui ao menos uma data ou evento derivável. O estado vazio esperado é:
+
+```txt
+Ainda não há eventos suficientes para montar a linha do tempo desta pessoa.
+```
+
+### Casamento ou união não aparece na linha do tempo
+
+Verificar:
+
+```txt
+src/app/pages/PersonProfile.tsx
+src/app/services/dataService.ts
+src/app/utils/buildPersonTimeline.ts
+obterRelacionamentosDetalhadosDaPessoa
+tipo_relacionamento = conjuge
+data_casamento
+subtipo_relacionamento
+```
+
+Se o usuário comum não vê o relacionamento, conferir RLS/leitura de `relacionamentos` antes de tratar como bug visual.
+
+### Separação aparece duplicada na linha do tempo
+
+Verificar:
+
+```txt
+src/app/utils/buildPersonTimeline.ts
+dedupeTimelineItems
+relationship-separation:{minPessoaId}:{maxPessoaId}:{dateValue || unknown}
+relacionamentos inversos
+data_separacao
+ativo
+subtipo_relacionamento = separado
+```
+
+Duplicação geralmente indica que a chave de deduplicação deixou de normalizar o par de pessoas.
+
+### Arquivos históricos não aparecem na linha do tempo
+
+Verificar:
+
+```txt
+src/app/pages/PersonProfile.tsx
+src/app/services/arquivosHistoricosService.ts
+listarArquivosHistoricosPorPessoa
+listarArquivosHistoricosDoRelacionamento
+src/app/utils/buildPersonTimeline.ts
+```
+
+Arquivos de relacionamento dependem dos relacionamentos conjugais detalhados carregados no perfil. Erros ao carregar arquivos de relacionamento devem gerar apenas aviso no console e não quebrar o perfil.
+
+### Eventos pessoais não aparecem na linha do tempo
+
+Verificar:
+
+```txt
+src/app/pages/PersonProfile.tsx
+src/app/services/personEventsService.ts
+listarEventosDaPessoa
+src/app/utils/buildPersonTimeline.ts
+PersonEventsList.tsx
+```
+
+Eventos com `tipo = memoria` devem aparecer como memória. Os demais tipos de `person_events` aparecem como evento pessoal.
+
+### Datas aparecem fora de ordem na linha do tempo
+
+Verificar:
+
+```txt
+src/app/utils/buildPersonTimeline.ts
+parseTimelineDate
+sortTimelineItems
+precision
+dateValue
+year
+month
+day
+```
+
+Ano puro deve manter precisão `year`; não deve ser convertido visualmente para `01/01/AAAA`. Itens com data desconhecida devem ficar no final.
+
+### Linha do tempo expõe dado sensível
+
+Verificar:
+
+```txt
+src/app/components/Timeline/PersonTimeline.tsx
+src/app/utils/buildPersonTimeline.ts
+sanitizeTimelineMetadata
+metadata
+arquivo.url
+base64
+telefone
+endereco
+email
+token
+secret
+```
+
+O componente não deve renderizar metadata bruta, IDs técnicos ou URLs de arquivos. Ações de abrir/baixar arquivo não fazem parte da primeira versão da timeline.
 
 ### Build quebra
 

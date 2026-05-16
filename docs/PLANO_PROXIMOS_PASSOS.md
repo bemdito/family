@@ -993,7 +993,7 @@ supabase/migrations
 
 ### Status
 
-Não implementado.
+Implementado funcionalmente.
 
 ### Objetivo
 
@@ -1063,7 +1063,13 @@ supabase/migrations
 
 ### Status
 
-Não implementado.
+Implementado funcionalmente.
+
+- 7.3A diagnóstico/modelagem: concluído.
+- 7.3B builder `buildPersonTimeline`: implementado.
+- 7.3C componente `PersonTimeline` e integração no perfil: implementado.
+- 7.3D QA, ajustes e documentação: concluído.
+- Documentação detalhada: `docs/TIMELINE.md`.
 
 ### Objetivo
 
@@ -1095,13 +1101,13 @@ src/app/utils/familyDates.ts
 
 ### Sugestões
 
-- Criar componente:
+- Componente criado:
 
 ```txt
 src/app/components/Timeline/PersonTimeline.tsx
 ```
 
-- Criar função utilitária:
+- Função utilitária criada:
 
 ```txt
 src/app/utils/buildPersonTimeline.ts
@@ -1111,7 +1117,7 @@ src/app/utils/buildPersonTimeline.ts
 - Criar persistência apenas para eventos manuais/customizados.
 - Usar `person_events` para eventos pessoais já cadastrados.
 
-### Primeira versão sugerida
+### Primeira versão implementada
 
 - Timeline derivada automaticamente.
 - Eventos ordenados por data.
@@ -1120,20 +1126,26 @@ src/app/utils/buildPersonTimeline.ts
 - Sem nova tabela.
 - Sem upload por evento.
 - Sem exportação PDF.
+- Integrada ao perfil da pessoa em `src/app/pages/PersonProfile.tsx`.
+- Usa relacionamentos detalhados da pessoa e arquivos históricos de relacionamentos conjugais quando disponíveis.
+- Mantém `PersonEventsList` separado nesta etapa.
 
-### Versão futura
+### Backlog futuro
 
 - Eventos manuais.
 - Uploads por evento.
 - Privacidade por evento.
 - Exportação em PDF.
+- Consolidação visual futura com `PersonEventsList`, se fizer sentido após QA de uso.
 
-### Ordem sugerida de prompts
+Essas evoluções permanecem em backlog e não bloqueiam o status funcional da primeira versão.
 
-1. Diagnóstico e modelagem da timeline derivada.
-2. Utilitário `buildPersonTimeline`.
-3. Componente `PersonTimeline` no perfil.
-4. QA, ajustes visuais e documentação.
+### Ordem executada de prompts
+
+1. Diagnóstico e modelagem da timeline derivada — concluído.
+2. Utilitário `buildPersonTimeline` — concluído.
+3. Componente `PersonTimeline` no perfil — concluído.
+4. QA, ajustes visuais e documentação — concluído.
 
 ---
 
@@ -1141,7 +1153,7 @@ src/app/utils/buildPersonTimeline.ts
 
 ### Status
 
-Não implementado.
+Parcial.
 
 ### Objetivo
 
@@ -1166,7 +1178,7 @@ src/app/utils/personFields.ts
 
 ### Sugestões
 
-- Criar helper:
+- Helper criado:
 
 ```txt
 src/app/utils/whatsapp.ts
@@ -1183,13 +1195,20 @@ https://wa.me/55NUMERO
 - Registrar activity log opcional:
   - `contact.whatsapp_clicked`
 
+### Próximo passo
+
+- Criar componente visual dedicado para o perfil.
+- Preservar a regra centralizada em `canUseWhatsAppContact`.
+- Decidir se clique em WhatsApp deve gerar activity log.
+- Se houver log, metadata deve conter apenas identificadores seguros, sem telefone ou URL `wa.me`.
+
 ---
 
 ## 7.5 Grau de parentesco/vínculo
 
 ### Status
 
-Não implementado.
+7.5B criado como base técnica pura. A funcionalidade final ainda não está implementada.
 
 ### Objetivo
 
@@ -1234,6 +1253,18 @@ src/app/utils/relationshipDegree.ts
   - descrição textual;
   - confiança.
 - Criar testes unitários para casos conhecidos.
+
+### Registro 7.5B
+
+- Criado `src/app/utils/relationshipDegree.ts` como utilitário puro e testável.
+- O utilitário recebe pessoas e relacionamentos já carregados em memória.
+- Não há chamada direta ao Supabase no utilitário.
+- Não há UI nova nesta etapa.
+- Não houve migration.
+- Não houve alteração de schema.
+- Não houve alteração de RLS.
+- A implementação parcial existente em `relationshipResolverService.ts` e `RelationshipFinder.tsx` permanece intacta.
+- Próxima etapa recomendada: 7.5C com testes unitários do utilitário; depois 7.5D para integração visual.
 
 ### Exemplos de retorno esperado
 

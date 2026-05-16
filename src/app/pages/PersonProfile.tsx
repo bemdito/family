@@ -3,13 +3,21 @@ import { useParams, useNavigate } from 'react-router';
 import { AppLink as Link } from '../components/AppLink';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { obterPessoaPorId, obterRelacionamentosDaPessoa, obterTodasPessoas } from '../services/dataService';
-import { listarArquivosHistoricosPorPessoa } from '../services/arquivosHistoricosService';
+import {
+  obterPessoaPorId,
+  obterRelacionamentosDaPessoa,
+  obterRelacionamentosDetalhadosDaPessoa,
+  obterTodasPessoas,
+} from '../services/dataService';
+import {
+  listarArquivosHistoricosDoRelacionamento,
+  listarArquivosHistoricosPorPessoa,
+} from '../services/arquivosHistoricosService';
 import { listarEventosDaPessoa } from '../services/personEventsService';
 import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
 import { alternarFavorito, conteudoEstaFavoritado } from '../services/userEngagementService';
 import { listarTopicosForum } from '../services/forumService';
-import { ForumTopico, Pessoa, PersonEvent } from '../types';
+import { ArquivoHistorico, ForumTopico, Pessoa, PersonEvent, Relacionamento } from '../types';
 import { 
   ArrowLeft, 
   Star, 
@@ -25,6 +33,8 @@ import { PersonEventsList } from '../components/person/PersonEventsList';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditPerson, getLinkedPessoaIdForUser, isAdminUser } from '../services/permissionService';
 import { ForumEmptyState } from '../components/forum/ForumEmptyState';
+import { PersonTimeline } from '../components/Timeline/PersonTimeline';
+import { buildPersonTimeline } from '../utils/buildPersonTimeline';
 
 type ProfileRelationships = {
   pais: Pessoa[];
@@ -52,6 +62,8 @@ export function PersonProfile() {
   const [relationshipsLoading, setRelationshipsLoading] = useState(false);
   const [forumTopicos, setForumTopicos] = useState<ForumTopico[]>([]);
   const [personEvents, setPersonEvents] = useState<PersonEvent[]>([]);
+  const [rawRelationships, setRawRelationships] = useState<Relacionamento[]>([]);
+  const [relationshipHistoricalFiles, setRelationshipHistoricalFiles] = useState<ArquivoHistorico[]>([]);
   const [forumLoading, setForumLoading] = useState(false);
   const [favoritado, setFavoritado] = useState(false);
   const [linkedPessoaId, setLinkedPessoaId] = useState<string | null>(null);
@@ -61,6 +73,19 @@ export function PersonProfile() {
     () => canEditPerson({ currentUser: user, pessoaId: id, linkedPessoaId, isAdmin }),
     [id, linkedPessoaId, user, isAdmin],
   );
+  const timelineItems = useMemo(() => {
+    if (!pessoa) return [];
+
+    return buildPersonTimeline({
+      pessoa,
+      relacionamentos: rawRelationships,
+      pessoas: allPeople.length > 0 ? allPeople : [pessoa],
+      filhos: relacionamentos.filhos,
+      arquivosHistoricosPessoa: pessoa.arquivos_historicos ?? [],
+      arquivosHistoricosRelacionamentos: relationshipHistoricalFiles,
+      eventosPessoais: personEvents,
+    });
+  }, [allPeople, pessoa, personEvents, rawRelationships, relationshipHistoricalFiles, relacionamentos.filhos]);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -80,6 +105,8 @@ export function PersonProfile() {
       setPessoa(undefined);
       setPersonEvents([]);
       setRelacionamentos(EMPTY_RELATIONSHIPS);
+      setRawRelationships([]);
+      setRelationshipHistoricalFiles([]);
       setRelationshipsLoading(false);
       const pessoaData = await obterPessoaPorId(id);
       const [arquivosHistoricos, eventosDaPessoa] = pessoaData
@@ -139,12 +166,50 @@ export function PersonProfile() {
       if (!id || pessoa?.id !== id) return;
 
       setRelationshipsLoading(true);
-      const rels = await obterRelacionamentosDaPessoa(id);
+      try {
+        const [rels, detailedRelationships] = await Promise.all([
+          obterRelacionamentosDaPessoa(id),
+          obterRelacionamentosDetalhadosDaPessoa(id),
+        ]);
+        let relationshipFiles: ArquivoHistorico[] = [];
 
-      if (!mounted) return;
+        const uniqueConjugalRelationshipIds = Array.from(
+          new Set(
+            detailedRelationships
+              .filter((rel) => rel.tipo_relacionamento === 'conjuge')
+              .map((rel) => rel.id)
+              .filter(Boolean)
+          )
+        );
 
-      setRelacionamentos(rels);
-      setRelationshipsLoading(false);
+        const filesByRelationship = await Promise.all(
+          uniqueConjugalRelationshipIds.map(async (relationshipId) => {
+            try {
+              return await listarArquivosHistoricosDoRelacionamento(relationshipId);
+            } catch (error) {
+              console.warn('Não foi possível carregar arquivos históricos de um relacionamento da timeline.', error);
+              return [];
+            }
+          })
+        );
+
+        relationshipFiles = filesByRelationship.flat();
+
+        if (!mounted) return;
+
+        setRelacionamentos(rels);
+        setRawRelationships(detailedRelationships);
+        setRelationshipHistoricalFiles(relationshipFiles);
+      } catch (error) {
+        console.warn('Não foi possível carregar relacionamentos para o perfil.', error);
+        if (mounted) {
+          setRelacionamentos(EMPTY_RELATIONSHIPS);
+          setRawRelationships([]);
+          setRelationshipHistoricalFiles([]);
+        }
+      } finally {
+        if (mounted) setRelationshipsLoading(false);
+      }
     }
 
     loadRelationships();
@@ -292,6 +357,8 @@ export function PersonProfile() {
           pessoaBase={pessoa}
           pessoas={allPeople.length > 0 ? allPeople : [pessoa]}
         />
+
+        <PersonTimeline items={timelineItems} isAdmin={isAdmin} />
 
         <PersonEventsList eventos={personEvents} />
 

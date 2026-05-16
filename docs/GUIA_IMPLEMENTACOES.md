@@ -217,6 +217,73 @@
 
 ---
 
+## Linha do tempo do usuário
+
+### Tópico 7.3
+
+- O tópico 7.3 — Linha do tempo do usuário foi implementado funcionalmente.
+- A primeira versão é derivada dos dados existentes e não criou tabela nova.
+- Não houve migration para a timeline.
+- Não há persistência própria da timeline nesta etapa.
+- Documentação detalhada:
+  - `docs/TIMELINE.md`
+
+### Builder da timeline
+
+- Foi criado o utilitário:
+  - `src/app/utils/buildPersonTimeline.ts`
+- O service `src/app/services/dataService.ts` expõe `obterRelacionamentosDetalhadosDaPessoa` para carregar relacionamentos detalhados da pessoa sem buscar toda a tabela no perfil.
+- O builder `buildPersonTimeline` é uma função pura.
+- O builder não acessa Supabase.
+- O builder não faz fetch.
+- O builder recebe dados já carregados e retorna itens normalizados, deduplicados e ordenados.
+- O parser de datas preserva precisão de dia, mês, ano ou data desconhecida.
+- Ano puro permanece como ano, sem virar `01/01/AAAA`.
+- Metadata sensível é sanitizada para não expor URLs completas, base64, telefone, endereço, e-mail, tokens, secrets ou keys sensíveis.
+
+### Componente e integração
+
+- Foi criado o componente:
+  - `src/app/components/Timeline/PersonTimeline.tsx`
+- O perfil da pessoa em `src/app/pages/PersonProfile.tsx` monta os itens com `buildPersonTimeline`.
+- A timeline aparece no perfil depois do bloco de parentesco e antes de `PersonEventsList`.
+- `PersonEventsList` foi mantido nesta etapa para preservar a visualização existente de eventos pessoais.
+
+### Eventos suportados
+
+- A timeline suporta:
+  - nascimento;
+  - falecimento com data;
+  - falecimento informado sem data;
+  - casamento;
+  - união;
+  - separação;
+  - nascimento de filhos;
+  - arquivos históricos da pessoa;
+  - arquivos históricos de relacionamento conjugal;
+  - eventos pessoais de `person_events`;
+  - memórias;
+  - eventos familiares globais, quando fornecidos futuramente ao builder.
+
+### Dados carregados pelo perfil
+
+- `PersonProfile` continua carregando pessoa, eventos pessoais, arquivos históricos da pessoa e relacionamentos agrupados.
+- Para a timeline, o perfil carrega também relacionamentos detalhados da pessoa por `pessoa_origem_id` ou `pessoa_destino_id`.
+- Arquivos históricos de relacionamentos conjugais são carregados por relacionamento relevante.
+- Falhas nesse carregamento adicional não devem quebrar o perfil; a timeline renderiza com os dados disponíveis.
+- A arquitetura completa, regras de datas, deduplicação, segurança e troubleshooting estão documentados em `docs/TIMELINE.md`.
+
+### Limitações e evoluções futuras
+
+- Não há edição manual de eventos na timeline.
+- Não há upload por evento.
+- Não há privacidade por evento.
+- Não há exportação PDF da timeline.
+- Não há integração com IA na timeline.
+- Pode ser avaliada consolidação visual futura entre `PersonTimeline` e `PersonEventsList`.
+
+---
+
 ## Genealogia e Visão Completa
 
 ### Views por geração
@@ -855,6 +922,28 @@
 - Documentar arquitetura de notificações em arquivo próprio.
 - Push real e WhatsApp real permanecem como futuras implementações.
 
+### WhatsApp no perfil
+
+- O tópico 7.4 ainda não está totalmente concluído.
+- A etapa 7.4B criou a base técnica/helper centralizado:
+  - `src/app/utils/whatsapp.ts`
+- O helper centraliza:
+  - normalização de telefone para `wa.me`;
+  - validação de telefone;
+  - montagem de URL `https://wa.me/NUMERO`;
+  - regra visual de uso do contato por WhatsApp.
+- A regra visual centralizada exige telefone válido e:
+  - `permitir_exibir_telefone = true`;
+  - ou `permitir_mensagens_whatsapp = true`.
+- O perfil passou a usar essa regra centralizada sem redesenho visual.
+- Ainda falta componente visual final/botão dedicado.
+- Não houve migration.
+- Não houve alteração de RLS.
+- Não houve WhatsApp Business API.
+- Não houve envio automático de mensagem.
+- Não houve log de clique nesta etapa.
+- Privacidade forte em nível de banco/API permanece como possível evolução futura.
+
 ### Técnicas
 
 - Verificar se upload abandonado no modal deixa objeto órfão no Storage.
@@ -867,12 +956,13 @@
 - Avaliar upload por evento pessoal.
 - Avaliar privacidade por evento pessoal.
 - Avaliar exportação PDF de eventos/timeline.
+- Avaliar edição manual de eventos da timeline.
+- Avaliar consolidação visual futura entre `PersonTimeline` e `PersonEventsList`.
 
 ### Ainda não implementado nesta etapa
 
 - Tópico 7.2 — Astrologia e acontecimentos do nascimento.
-- Tópico 7.3 — Linha do tempo do usuário, exceto diagnóstico/modelagem 7.3A quando documentado fora desta lista.
-- Tópico 7.4 — Entrar em contato por WhatsApp.
+- Tópico 7.4 — Entrar em contato por WhatsApp, exceto helper/base técnica 7.4B.
 - Tópico 7.5 — Grau de parentesco/vínculo.
 - Tópico 7.6 — Selecionar área para PDF/impressão.
 - Tópico 7.7 — Legendas visuais da árvore.
@@ -888,8 +978,8 @@ Esta seção relaciona o guia de implementações com os tópicos do plano de pr
 |---|---|---|
 | 7.1 Notificações | Parcialmente implementado / consolidado para QA final | Seção "Notificações" |
 | 7.2 Astrologia e acontecimentos do nascimento | Não implementado | Ainda não há seção de implementação |
-| 7.3 Linha do tempo do usuário | Apenas diagnóstico/modelagem 7.3A; builder/UI ainda não consolidados | Ainda não há seção de implementação final |
-| 7.4 WhatsApp | Não implementado | Ainda não há seção de implementação |
+| 7.3 Linha do tempo do usuário | Implementado funcionalmente; evoluções futuras em backlog | Seção "Linha do tempo do usuário" |
+| 7.4 WhatsApp | Parcial: helper/base técnica 7.4B implementada; botão final pendente | Seção "WhatsApp no perfil" |
 | 7.5 Grau de parentesco/vínculo | Não implementado | Ainda não há seção de implementação |
 | 7.6 PDF/impressão por área | Não implementado | Ainda não há seção de implementação |
 | 7.7 Legendas visuais da árvore | Não implementado | Ainda não há seção de implementação |

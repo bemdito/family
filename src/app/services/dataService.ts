@@ -368,6 +368,20 @@ export async function obterTodosRelacionamentos(): Promise<Relacionamento[]> {
   return (data || []).map(toRelacionamento);
 }
 
+export async function obterRelacionamentosDetalhadosDaPessoa(pessoaId: string): Promise<Relacionamento[]> {
+  const { data, error } = await supabase
+    .from('relacionamentos')
+    .select('*')
+    .or(`pessoa_origem_id.eq.${pessoaId},pessoa_destino_id.eq.${pessoaId}`);
+
+  if (error) {
+    logSupabaseError(`Erro ao obter relacionamentos detalhados da pessoa ${pessoaId}`, error);
+    throw new Error(getSupabaseErrorMessage('relacionamentos', error));
+  }
+
+  return (data || []).map(toRelacionamento);
+}
+
 export async function obterRelacionamentosDaPessoa(pessoaId: string) {
   try {
     const { data, error } = await supabase
