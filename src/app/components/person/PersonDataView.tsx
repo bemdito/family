@@ -4,7 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { Pessoa } from '../../types';
 import { formatPhone, getPersonZodiacSign, isPersonDeceased } from '../../utils/personFields';
-import { buildWhatsAppUrl, getSocialLink, isBirthDate, shouldShowAquariusFallback } from '../../utils/personProfile';
+import { getSocialLink, isBirthDate, shouldShowAquariusFallback } from '../../utils/personProfile';
+import { canUseWhatsAppContact } from '../../utils/whatsapp';
+import { WhatsAppContactButton } from './WhatsAppContactButton';
 import {
   gerarInsightsPessoa,
   getInsightByType,
@@ -48,12 +50,9 @@ export function PersonDataView({ pessoa }: { pessoa: Pessoa }) {
     (pessoa.permitir_exibir_rede_social === true || pessoa.permitir_exibir_instagram === true) &&
     (pessoa.instagram_url || pessoa.instagram_usuario || pessoa.rede_social)
   );
-  const canShowPhone = Boolean(
-    (pessoa.permitir_exibir_telefone === true || pessoa.permitir_mensagens_whatsapp === true) &&
-    pessoa.telefone
-  );
+  const canShowPhoneNumber = Boolean(pessoa.permitir_exibir_telefone === true && pessoa.telefone);
+  const canShowWhatsAppButton = canUseWhatsAppContact(pessoa);
   const canShowAddress = Boolean(pessoa.permitir_exibir_endereco === true && pessoa.endereco);
-  const whatsAppUrl = buildWhatsAppUrl(pessoa.telefone);
   const socialLink = getSocialLink(pessoa);
 
   useEffect(() => {
@@ -211,27 +210,26 @@ export function PersonDataView({ pessoa }: { pessoa: Pessoa }) {
         </Card>
       )}
 
-      {!isFalecido && (canShowPhone || canShowAddress || canShowSocial) && (
+      {!isFalecido && (canShowPhoneNumber || canShowWhatsAppButton || canShowAddress || canShowSocial) && (
         <Card>
           <CardHeader>
             <CardTitle>Contato</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {canShowPhone && (
+            {canShowPhoneNumber && (
               <InfoItem
                 icon={<Phone className="h-4 w-4" />}
                 label="Telefone"
-                value={
-                  whatsAppUrl ? (
-                    <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                      {formatPhone(String(pessoa.telefone ?? ''))}
-                    </a>
-                  ) : (
-                    formatPhone(String(pessoa.telefone ?? ''))
-                  )
-                }
+                value={formatPhone(String(pessoa.telefone ?? ''))}
               />
             )}
+            <WhatsAppContactButton
+              telefone={pessoa.telefone ?? null}
+              permitirExibirTelefone={pessoa.permitir_exibir_telefone ?? null}
+              permitirMensagensWhatsApp={pessoa.permitir_mensagens_whatsapp ?? null}
+              personId={pessoa.id}
+              personName={pessoa.nome_completo}
+            />
             <InfoItem icon={<Home className="h-4 w-4" />} label="Endereço" value={canShowAddress ? pessoa.endereco : undefined} />
             {canShowSocial && (
               <InfoItem

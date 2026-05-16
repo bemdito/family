@@ -1155,6 +1155,11 @@ Essas evoluções permanecem em backlog e não bloqueiam o status funcional da p
 
 Parcial.
 
+- 7.4A diagnóstico técnico concluído.
+- 7.4B helper/base técnica concluído.
+- 7.4C componente visual e integração no perfil concluído.
+- Privacidade forte em nível de banco/API permanece como possível frente futura, não requisito da primeira versão visual.
+
 ### Objetivo
 
 Permitir que usuários entrem em contato com familiares via WhatsApp quando permitido.
@@ -1197,10 +1202,10 @@ https://wa.me/55NUMERO
 
 ### Próximo passo
 
-- Criar componente visual dedicado para o perfil.
-- Preservar a regra centralizada em `canUseWhatsAppContact`.
+- Executar QA final da frente 7.4 no perfil.
 - Decidir se clique em WhatsApp deve gerar activity log.
 - Se houver log, metadata deve conter apenas identificadores seguros, sem telefone ou URL `wa.me`.
+- Revisar duplicidade em `Home.tsx`/`ContactInfo` sem quebrar a Home.
 
 ---
 
@@ -1208,7 +1213,7 @@ https://wa.me/55NUMERO
 
 ### Status
 
-7.5B criado como base técnica pura. A funcionalidade final ainda não está implementada.
+7.5B/7.5C criados como base técnica pura e testada. A funcionalidade final ainda não está implementada.
 
 ### Objetivo
 
@@ -1265,6 +1270,19 @@ src/app/utils/relationshipDegree.ts
 - Não houve alteração de RLS.
 - A implementação parcial existente em `relationshipResolverService.ts` e `RelationshipFinder.tsx` permanece intacta.
 - Próxima etapa recomendada: 7.5C com testes unitários do utilitário; depois 7.5D para integração visual.
+
+### Registro 7.5C
+
+- Criados testes unitários para `src/app/utils/relationshipDegree.ts`.
+- Adicionado Vitest como dependência de desenvolvimento mínima.
+- Adicionado script `npm test` para executar `vitest run`.
+- Os testes usam apenas fixtures locais de pessoas e relacionamentos.
+- Não há chamada Supabase nos testes.
+- Não há UI nova nesta etapa.
+- Não houve migration.
+- Não houve alteração de schema.
+- Não houve alteração de RLS.
+- Próxima etapa recomendada: 7.5D com integração visual controlada, avaliando `RelationshipFinder.tsx` e `relationshipResolverService.ts` antes de substituir a lógica legada.
 
 ### Exemplos de retorno esperado
 

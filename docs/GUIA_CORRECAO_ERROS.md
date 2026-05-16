@@ -1406,6 +1406,7 @@ supabase/migrations/20260514201000_create_notification_dispatch_rpc.sql
 - Verificar a normalização em `src/app/utils/whatsapp.ts`.
 - Verificar se `permitir_exibir_telefone` ou `permitir_mensagens_whatsapp` está verdadeiro.
 - Verificar se `PersonDataView.tsx` usa `canUseWhatsAppContact`.
+- Verificar se `WhatsAppContactButton.tsx` está recebendo as flags corretas.
 
 #### Link WhatsApp quebra ou abre número incorreto
 
@@ -1416,8 +1417,22 @@ supabase/migrations/20260514201000_create_notification_dispatch_rpc.sql
 #### Telefone aparece indevidamente no perfil
 
 - Verificar a regra `canUseWhatsAppContact`.
+- Verificar a distinção entre `permitir_exibir_telefone` e `permitir_mensagens_whatsapp`.
 - Verificar o uso em `src/app/components/person/PersonDataView.tsx`.
+- O número em texto só deve aparecer quando `permitir_exibir_telefone` for verdadeiro.
 - Lembrar que a regra atual protege a UI; RLS forte para ocultar telefone no banco exige frente própria.
+
+#### Activity log de WhatsApp contém dado sensível
+
+- Corrigir imediatamente o ponto de registro.
+- Não salvar:
+  - telefone;
+  - URL `wa.me`;
+  - mensagem;
+  - email;
+  - endereço;
+  - token;
+  - secret;
 
 ---
 

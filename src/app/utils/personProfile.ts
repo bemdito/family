@@ -1,5 +1,6 @@
 import { Pessoa } from '../types';
 import { getPersonZodiacSign, isPersonDeceased } from './personFields';
+export { buildWhatsAppUrl } from './whatsapp';
 
 export function getYearFromDate(value?: string | number) {
   if (value === undefined || value === null) return undefined;
@@ -69,13 +70,6 @@ export function getRelationshipSubtitle(person: Pessoa) {
   if (birthYear) return `Nascido em ${birthYear}`;
   if (birthPlace) return `Nascido em ${birthPlace}`;
   return 'Perfil familiar';
-}
-
-export function buildWhatsAppUrl(phone?: string | number) {
-  const rawDigits = String(phone ?? '').replace(/\D/g, '');
-  if (!rawDigits) return undefined;
-  const digits = rawDigits.startsWith('55') ? rawDigits : `55${rawDigits}`;
-  return `https://wa.me/${digits}`;
 }
 
 function ensureHttps(value: string) {
