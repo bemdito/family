@@ -16,7 +16,6 @@ import {
 } from '../services/arquivosHistoricosService';
 import { listarEventosDaPessoa } from '../services/personEventsService';
 import { ArquivosHistoricos } from '../components/ArquivosHistoricos';
-import { alternarFavorito, conteudoEstaFavoritado } from '../services/userEngagementService';
 import { listarTopicosForum } from '../services/forumService';
 import { ArquivoHistorico, ForumTopico, Pessoa, PersonEvent, Relacionamento } from '../types';
 import { 
@@ -26,7 +25,6 @@ import {
   MessageCircle,
   Plus
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { PersonDataView } from '../components/person/PersonDataView';
 import { PersonRelationshipsView } from '../components/person/PersonRelationshipsView';
 import { RelationshipFinder } from '../components/person/RelationshipFinder';
@@ -36,6 +34,7 @@ import { canEditPerson, getLinkedPessoaIdForUser, isAdminUser } from '../service
 import { getCachedTreeData } from '../services/treeDataCache';
 import { ForumEmptyState } from '../components/forum/ForumEmptyState';
 import { PersonTimeline } from '../components/Timeline/PersonTimeline';
+import { FavoriteButton } from '../components/favorites/FavoriteButton';
 import { buildPersonTimeline } from '../utils/buildPersonTimeline';
 
 type ProfileRelationships = {
@@ -67,7 +66,6 @@ export function PersonProfile() {
   const [rawRelationships, setRawRelationships] = useState<Relacionamento[]>([]);
   const [relationshipHistoricalFiles, setRelationshipHistoricalFiles] = useState<ArquivoHistorico[]>([]);
   const [forumLoading, setForumLoading] = useState(false);
-  const [favoritado, setFavoritado] = useState(false);
   const [linkedPessoaId, setLinkedPessoaId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [allPeople, setAllPeople] = useState<Pessoa[]>([]);
@@ -124,7 +122,6 @@ export function PersonProfile() {
 
       setPessoa(pessoaData ? { ...pessoaData, arquivos_historicos: arquivosHistoricos } : undefined);
       setPersonEvents(eventosDaPessoa);
-      setFavoritado(conteudoEstaFavoritado('pessoa', id));
       setLoading(false);
     }
 
@@ -324,16 +321,6 @@ export function PersonProfile() {
     );
   }
 
-  const handleToggleFavorite = () => {
-    const resultado = alternarFavorito({
-      tipo: 'pessoa',
-      conteudoId: pessoa.id,
-      titulo: pessoa.nome_completo,
-    });
-
-    setFavoritado(resultado.active);
-    toast.success(resultado.active ? 'Pessoa adicionada aos favoritos' : 'Pessoa removida dos favoritos');
-  };
   const relationshipFinderRelationships = relationshipDegreeContextComplete ? allRelationships : rawRelationships;
   const relationshipFinderScopeNotice = relationshipDegreeContextComplete
     ? undefined
@@ -362,10 +349,14 @@ export function PersonProfile() {
                 Notificações
               </Button>
             </Link>
-            <Button variant="outline" onClick={handleToggleFavorite}>
-              <Star className={`w-4 h-4 mr-2 ${favoritado ? 'fill-current text-yellow-500' : ''}`} />
-              {favoritado ? 'Salvo' : 'Salvar'}
-            </Button>
+            <FavoriteButton
+              entityType="person"
+              entityId={pessoa.id}
+              label={pessoa.nome_completo}
+              description="Perfil individual da árvore familiar"
+              href={`/pessoa/${pessoa.id}`}
+              metadata={{ source: 'person_profile' }}
+            />
             {canEdit && (
               <Button
                 variant="outline"

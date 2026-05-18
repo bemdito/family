@@ -54,6 +54,10 @@ export function getCurrentDemoUserId() {
   return DEFAULT_USER_ID;
 }
 
+// Legado/local: mantido temporariamente para compatibilidade com chamadas antigas.
+// O fluxo persistido de favoritos usa src/app/services/favoritesService.ts e public.user_favorites.
+
+
 export function listarFavoritos(userId = DEFAULT_USER_ID): FavoritoUsuario[] {
   const favoritos = readJson<FavoritoUsuario[]>(FAVORITES_KEY, []);
   return favoritos
