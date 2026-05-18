@@ -533,11 +533,11 @@ export function Entrar() {
                   </Button>
                 </div>
               ) : mode === 'login' ? (
-                <form onSubmit={handleLogin} className="space-y-4">
+                <form onSubmit={handleLogin} className="space-y-4" data-testid="login-form">
                   <Field label="E-mail">
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <Input type="email" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} className="pl-10" required />
+                      <Input type="email" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} className="pl-10" required data-testid="login-email" />
                     </div>
                   </Field>
 
@@ -550,6 +550,7 @@ export function Entrar() {
                         onChange={(event) => setLoginPassword(event.target.value)}
                         className="pl-10 pr-10"
                         required
+                        data-testid="login-password"
                       />
                       <button
                         type="button"
@@ -562,7 +563,7 @@ export function Entrar() {
                     </div>
                   </Field>
 
-                  <Button type="submit" className="w-full" disabled={submitting}>
+                  <Button type="submit" className="w-full" disabled={submitting} data-testid="login-submit">
                     {submitting ? 'Entrando...' : 'Entrar'}
                   </Button>
 

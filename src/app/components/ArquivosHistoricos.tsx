@@ -70,7 +70,10 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, relacionament
     descricao: '',
     ano: '',
     tipo: 'imagem' as 'imagem' | 'pdf',
-    url: ''
+    url: '',
+    storage_bucket: '',
+    storage_path: '',
+    mime_type: '',
   });
   const [isAddingFile, setIsAddingFile] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -93,6 +96,9 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, relacionament
       setNovoArquivo(prev => ({
         ...prev,
         url: upload.url,
+        storage_bucket: upload.bucket,
+        storage_path: upload.path,
+        mime_type: file.type || 'application/octet-stream',
         tipo: isImage ? 'imagem' : 'pdf'
       }));
     } catch (error) {
@@ -113,6 +119,9 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, relacionament
       id: `arquivo-${Date.now()}`,
       tipo: novoArquivo.tipo,
       url: novoArquivo.url,
+      storage_bucket: novoArquivo.storage_bucket || undefined,
+      storage_path: novoArquivo.storage_path || undefined,
+      mime_type: novoArquivo.mime_type || undefined,
       titulo: novoArquivo.titulo,
       pessoa_id: pessoaId ?? null,
       relacionamento_id: relacionamentoId ?? null,
@@ -122,7 +131,7 @@ export function ArquivosHistoricos({ arquivos, onChange, pessoaId, relacionament
     };
 
     onChange([...arquivos, arquivo]);
-    setNovoArquivo({ titulo: '', descricao: '', ano: '', tipo: 'imagem', url: '' });
+    setNovoArquivo({ titulo: '', descricao: '', ano: '', tipo: 'imagem', url: '', storage_bucket: '', storage_path: '', mime_type: '' });
     setIsAddingFile(false);
   };
 

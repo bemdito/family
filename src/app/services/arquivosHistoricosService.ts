@@ -37,6 +37,10 @@ function toArquivoHistorico(row: any): ArquivoHistorico {
     relacionamento_id: row.relacionamento_id ?? null,
     tipo: row.tipo,
     url: row.url,
+    storage_bucket: row.storage_bucket ?? null,
+    storage_path: row.storage_path ?? null,
+    mime_type: row.mime_type ?? null,
+    created_by: row.created_by ?? null,
     titulo: row.titulo,
     descricao: row.descricao ?? undefined,
     ano: row.ano ?? undefined,
@@ -57,6 +61,9 @@ function hasArquivoChanged(current: ArquivoHistorico, next: ArquivoHistorico, ne
   return (
     current.tipo !== next.tipo ||
     current.url !== next.url ||
+    normalizeOptional(current.storage_bucket) !== normalizeOptional(next.storage_bucket) ||
+    normalizeOptional(current.storage_path) !== normalizeOptional(next.storage_path) ||
+    normalizeOptional(current.mime_type) !== normalizeOptional(next.mime_type) ||
     current.titulo !== next.titulo ||
     normalizeOptional(current.descricao) !== normalizeOptional(next.descricao) ||
     normalizeOptional(current.ano) !== normalizeOptional(next.ano) ||
@@ -172,6 +179,9 @@ async function salvarArquivosHistoricosPorOwner(
       ...ownerPayload,
       tipo: arquivo.tipo,
       url: arquivo.url,
+      storage_bucket: normalizeOptional(arquivo.storage_bucket),
+      storage_path: normalizeOptional(arquivo.storage_path),
+      mime_type: normalizeOptional(arquivo.mime_type),
       titulo: arquivo.titulo,
       descricao: normalizeOptional(arquivo.descricao),
       ano: normalizeOptional(arquivo.ano),
@@ -288,6 +298,9 @@ export async function adicionarArquivoHistoricoAoRelacionamento(
     pessoa_id: null,
     tipo: isImage ? 'imagem' : 'pdf',
     url: upload.url,
+    storage_bucket: upload.bucket,
+    storage_path: upload.path,
+    mime_type: input.file.type || 'application/octet-stream',
     titulo: input.titulo,
     descricao: input.descricao ?? undefined,
     ano: input.ano ?? undefined,

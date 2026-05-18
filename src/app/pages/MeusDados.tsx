@@ -46,6 +46,11 @@ import {
   listarArquivosHistoricosPorPessoa,
   substituirArquivosHistoricosDaPessoa,
 } from '../services/arquivosHistoricosService';
+import {
+  buildSocialProfilesFromRows,
+  listarPessoaSocialProfiles,
+  substituirPessoaSocialProfiles,
+} from '../services/pessoaSocialProfilesService';
 import { ArquivoHistorico, Pessoa, PreferenciaNotificacao } from '../types';
 import {
   buildEditablePersonFormState,
@@ -328,6 +333,7 @@ export function MeusDados() {
       const shouldPreserveDraft = hasInitializedFormRef.current && isDirtyRef.current && samePessoa;
       const draftKey = user.id && nextPessoaId ? getDraftKey(user.id, nextPessoaId) : null;
       const draft = draftKey && !shouldPreserveDraft ? readMeusDadosDraft(draftKey) : null;
+      let loadedSocialProfiles = buildSocialProfilesFromPerson(data?.pessoa);
 
       setLink(data);
 
@@ -340,7 +346,20 @@ export function MeusDados() {
             toast.error(
               archivesError instanceof Error
                 ? archivesError.message
-                : 'Não foi possível carregar arquivos históricos.',
+              : 'Não foi possível carregar arquivos históricos.',
+            );
+          }
+        }
+
+        try {
+          const socialProfileRows = await listarPessoaSocialProfiles(nextPessoaId);
+          loadedSocialProfiles = buildSocialProfilesFromRows(socialProfileRows, data?.pessoa);
+        } catch (socialProfilesError) {
+          if (mounted) {
+            toast.warning(
+              socialProfilesError instanceof Error
+                ? `Não foi possível carregar redes sociais versionadas: ${socialProfilesError.message}`
+                : 'Não foi possível carregar redes sociais versionadas.',
             );
           }
         }
@@ -350,7 +369,7 @@ export function MeusDados() {
 
       if (!shouldPreserveDraft) {
         setForm(draft?.form ?? buildEditablePersonFormState(data?.pessoa));
-        setSocialProfiles(draft?.socialProfiles ?? buildSocialProfilesFromPerson(data?.pessoa));
+        setSocialProfiles(draft?.socialProfiles ?? loadedSocialProfiles);
         setComplemento(draft?.complemento ?? '');
         isDirtyRef.current = Boolean(draft);
       }
@@ -674,7 +693,6 @@ export function MeusDados() {
 
     setSaving(true);
 
-    // TODO: persistir todos os itens em pessoa_social_profiles quando a tabela estiver disponível.
     const primarySocialProfile = socialProfiles[0];
     const payload = cleanPersonPayload({
       ...form,
@@ -701,6 +719,19 @@ export function MeusDados() {
       setSaving(false);
       toast.error(updateError);
       return;
+    }
+
+    try {
+      const savedProfiles = await substituirPessoaSocialProfiles(pessoa.id, socialProfiles, {
+        exibirNoPerfil: payload.permitir_exibir_rede_social !== false,
+      });
+      setSocialProfiles(buildSocialProfilesFromRows(savedProfiles, updatedPessoa ?? pessoa));
+    } catch (socialProfilesError) {
+      toast.warning(
+        socialProfilesError instanceof Error
+          ? `Dados pessoais salvos, mas não foi possível salvar redes sociais versionadas: ${socialProfilesError.message}`
+          : 'Dados pessoais salvos, mas não foi possível salvar redes sociais versionadas.',
+      );
     }
 
     try {

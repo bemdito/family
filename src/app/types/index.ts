@@ -126,10 +126,25 @@ export interface ArquivoHistorico {
   relacionamento_id?: string | null;
   tipo: 'imagem' | 'pdf';
   url: string;
+  storage_bucket?: string | null;
+  storage_path?: string | null;
+  mime_type?: string | null;
+  created_by?: string | null;
   titulo: string;
   descricao?: string;
   ano?: string;
   ordem?: number;
+}
+
+export interface PessoaSocialProfile {
+  id: string;
+  pessoa_id: string;
+  rede: string;
+  perfil?: string | null;
+  url?: string | null;
+  exibir_no_perfil: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type PersonEventType =

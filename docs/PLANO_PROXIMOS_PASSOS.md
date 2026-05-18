@@ -32,7 +32,6 @@ Executar no terminal:
 git status
 npm run build
 git diff --check
-supabase db push
 ```
 
 Observação operacional: antes de qualquer `supabase db push`, revisar `supabase migration list` e confirmar se há migration local realmente pendente. Em 09/05 houve caso em que o schema remoto já refletia os efeitos e o caminho correto foi `supabase migration repair --status applied`, não push.
@@ -42,7 +41,7 @@ Observação operacional: antes de qualquer `supabase db push`, revisar `supabas
 - `git status` sem alterações pendentes, salvo se houver novos registros de teste.
 - `npm run build` passando.
 - `git diff --check` sem erros.
-- `supabase db push` informando que o remoto está atualizado.
+- migrations pendentes identificadas e aprovadas antes de qualquer aplicação remota.
 
 ## Se algo falhar
 
@@ -834,9 +833,10 @@ supabase/migrations
 - [ ] Criar controle para evitar uploads órfãos no Storage.
 - [ ] Refinar `/admin/integridade` com filtros por severidade.
 - [ ] Remover campo técnico `lado` dos `changed_fields` do histórico.
-- [ ] Implementar lazy loading das rotas admin e bibliotecas pesadas.
-- [ ] Avaliar limpeza ou migração futura de arquivos antigos em base64 para Storage.
-- [ ] Avaliar persistência futura de múltiplas redes sociais em tabela própria.
+- [x] Implementar lazy loading/code splitting básico das rotas.
+- [x] Adicionar Playwright E2E básico.
+- [x] Integrar gradualmente `public.pessoa_social_profiles`, mantendo fallback nos campos legados de `pessoas`.
+- [x] Criar scripts dry-run para diagnóstico de órfãos no Storage e migração de base64 legado.
 - [ ] Avaliar upload por evento pessoal.
 - [ ] Avaliar privacidade por evento pessoal.
 - [ ] Avaliar exportação PDF de eventos/timeline.
@@ -848,8 +848,18 @@ supabase/migrations
 - [ ] Atualizar `MIGRATION-GUIDE.md` com fluxo de dump, `migration list`, repair e validação antes de push.
 - [ ] Decidir se `public.pessoas_com_estatisticas` será removida ou documentada como legado remoto.
 - [ ] Decidir se `public.imagens_pessoa` será aposentada das migrations futuras ou mantida como histórico antigo.
-- [ ] Planejar refatoração futura de redes sociais para `public.pessoa_social_profiles`.
 - [ ] Arquivar ou revisar scripts SQL legados, como `supabase/forum-schema.sql` e `supabase/google-calendar-schema.sql`.
+
+## Pendências de produto
+
+- [ ] Definir e implementar upload de arquivos históricos de casamento por usuário comum.
+
+## Pendências operacionais
+
+- [ ] Aplicar a migration pendente no Supabase remoto após revisão de `supabase migration list`.
+- [ ] Rodar dry-run dos scripts administrativos em ambiente protegido:
+  - `node scripts/storage-diagnose-orphans.mjs --output=/tmp/storage-orphans.json`;
+  - `node scripts/migrate-legacy-base64-files.mjs --output=/tmp/base64-migration.json`.
 
 ---
 
@@ -884,10 +894,10 @@ Corrigir antes de novas funcionalidades:
 ## 6.3 Terceiro: melhorias técnicas
 
 1. Uploads órfãos.
-2. Lazy loading.
+2. Aplicação remota da migration pendente.
 3. Filtros na integridade.
 4. Limpeza de metadata.
-5. Migração futura de base64 legado.
+5. Dry-run administrativo dos scripts de Storage/base64.
 6. E-mail real de notificações.
 7. Edge Function/cron de notificações.
 8. Documentação final das frentes implementadas.
@@ -1309,6 +1319,94 @@ src/app/utils/relationshipDegree.ts
 - Não houve cache persistido novo.
 - `relationshipResolverService.ts` permanece como legado/parcial e deixou de ser usado no fluxo visual principal adaptado.
 - Próxima etapa recomendada: 7.5E com QA manual e refinamento de UX/documentação.
+
+### Registro 7.5E
+
+- Executado QA manual parcial da UI de grau de parentesco/vínculo na Home, na aba "Curiosidades" > "Qual a minha conexão com alguém?", e no componente `RelationshipFinder` do perfil de pessoa.
+- O QA foi feito em navegador local com usuário admin e usuário comum, incluindo checagem desktop e mobile básica.
+- A Home carregou a seção de conexão sem erro e preservou o escopo de dados já carregado pela árvore.
+- O perfil carregou o `RelationshipFinder` usando o contexto disponível; quando o cache da árvore estava disponível, não exibiu aviso de escopo.
+- Corrigido bug claro no utilitário puro: a orientação real dos registros `pai`/`mae` e `filho` em `public.relacionamentos` foi alinhada com a semântica usada pelo app (`pai`/`mae`: destino é pai/mãe da origem; `filho`: destino é filho da origem).
+- Ajustados testes unitários de `relationshipDegree.ts` para cobrir a orientação real dos dados.
+- Refinada a apresentação da UI: descrições foram humanizadas na camada `relationshipDegreeDisplay.ts`, `Grau` indefinido deixou de aparecer como "não definido", e avisos globais não poluem resultados encontrados.
+- Verificado que o resultado não exibe telefone, endereço, e-mail, URL de arquivo, base64, observações internas, token ou secret.
+- `relationshipDegree.ts` continua sem Supabase e sem IA.
+- O fluxo visual principal continua sem depender de `regras_parentesco` ou `parentescos_calculados`.
+- Não houve migration nesta frente 7.5E.
+- Não houve alteração de schema.
+- Não houve alteração de RLS.
+- Não houve alteração de dados reais.
+- Não houve integração na árvore/Genealogia, cálculo em massa, cache persistido ou remoção destrutiva do legado.
+- Não houve alteração de notificações, Edge Functions ou da frente 7.6.
+- QA funcional manual ainda não cobriu todos os casos mínimos em navegador; a frente 7.5 permanece parcial.
+- Próxima etapa recomendada: 7.5F com QA complementar/correções finais da UI, cobrindo todos os casos mínimos com admin e usuário comum antes de consolidação final.
+
+### Registro 7.5F
+
+- Executado QA complementar em navegador local para a UI de grau de parentesco/vínculo.
+- Rotas/componentes verificados:
+  - Home, aba "Curiosidades" > "Qual a minha conexão com alguém?";
+  - perfil de pessoa em `/pessoa/:id`, componente `RelationshipFinder`.
+- Permissões verificadas:
+  - Home como admin;
+  - Perfil como admin;
+  - Home como usuário comum;
+  - Perfil como usuário comum.
+- Ambientes visuais verificados:
+  - desktop;
+  - mobile básico em 390px;
+  - console do navegador.
+- Casos testados manualmente e aprovados com dados reais disponíveis:
+  - seleção vazia, com botão desabilitado/estado inicial claro;
+  - filho(a) para pai/mãe;
+  - pai/mãe para filho(a);
+  - irmãos;
+  - cônjuge ativo;
+  - vínculo indireto;
+  - caminho de pessoas e caminho de relações;
+  - warnings amigáveis sem duplicação relevante;
+  - resultado sem exposição de telefone, endereço, e-mail, URL de arquivo, base64, token, secret ou observações internas.
+- Casos cobertos pelos testes unitários e pela semântica real do app:
+  - pai/mãe;
+  - filho(a);
+  - irmãos explícitos e derivados;
+  - avô/avó;
+  - neto(a);
+  - tio(a);
+  - sobrinho(a);
+  - primo(a);
+  - cônjuge ativo;
+  - cônjuge inativo ignorado por padrão;
+  - cônjuge inativo incluído quando a opção é marcada;
+  - sem vínculo;
+  - dados incompletos;
+  - caminhos indiretos.
+- Casos não testados manualmente por ausência de dados reais no escopo visual carregado:
+  - cônjuge separado/inativo com opção desmarcada;
+  - cônjuge separado/inativo com opção marcada;
+  - pessoa base sem outra pessoa disponível.
+- Ajuste final realizado:
+  - corrigida acentuação residual de "específica" em resultado de vínculo indireto na camada `relationshipDegreeDisplay.ts`.
+- A Home continuou usando `pessoas` e `relacionamentos` já carregados pela árvore.
+- O Perfil continuou usando cache em memória da árvore quando disponível e fallback por `dataService` quando necessário, respeitando o escopo/RLS da tela chamadora.
+- O aviso de escopo do Perfil permanece condicionado à ausência de contexto completo.
+- `relationshipDegree.ts` continua utilitário puro, sem Supabase, sem IA e sem cache persistido.
+- O fluxo visual principal não depende de `regras_parentesco` nem de `parentescos_calculados`.
+- `relationshipResolverService.ts` permanece legado/parcial e fora do fluxo principal.
+- Não houve migration.
+- Não houve criação/alteração de schema.
+- Não houve alteração de RLS.
+- Não houve alteração de dados reais.
+- Não houve alteração de notificações, Edge Functions, `relationship_change_requests`, permissões ou fluxo de edição de relacionamentos reais.
+- A migration local pendente `20260516120000_refine_person_events_and_historical_file_storage_metadata.sql` permanece fora do escopo da frente 7.5, não foi aplicada e deve ser tratada em prompt próprio.
+- Console: sem erros relevantes de runtime; permanecem apenas log informativo de diagnóstico Supabase e warning genérico de `DialogContent` sem descrição, registrados como hardening posterior.
+- Status: 7.5 funcionalmente consolidada após QA, com pendências futuras opcionais.
+- Pendências futuras opcionais da 7.5:
+  - integração futura na árvore/Genealogia;
+  - integração futura na Visão Completa;
+  - limpeza técnica futura do service legado `relationshipResolverService.ts`;
+  - testes de componente quando houver infraestrutura dedicada;
+  - novo QA específico se forem adicionados dados reais de cônjuge inativo/separado.
 
 ### Exemplos de retorno esperado
 

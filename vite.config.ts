@@ -77,5 +77,26 @@ export default defineConfig(({ mode }) => {
 
     // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
     assetsInclude: ['**/*.svg', '**/*.csv'],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('@supabase')) return 'vendor-supabase';
+            if (id.includes('reactflow') || id.includes('dagre')) return 'vendor-tree';
+            if (id.includes('html2canvas')) return 'vendor-html2canvas';
+            if (id.includes('jspdf')) return 'vendor-jspdf';
+            if (id.includes('@mui') || id.includes('@emotion')) return 'vendor-mui';
+            if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';
+            if (id.includes('lucide-react')) return 'vendor-icons';
+            if (id.includes('@radix-ui')) return 'vendor-radix';
+            return undefined;
+          },
+        },
+      },
+    },
+    test: {
+      exclude: ['node_modules/**', 'dist/**', 'tests/e2e/**'],
+    },
   };
 })

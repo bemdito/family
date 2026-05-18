@@ -26,6 +26,11 @@ import {
   salvarEventosDaPessoa,
 } from '../../services/personEventsService';
 import {
+  buildSocialProfilesFromRows,
+  listarPessoaSocialProfiles,
+  substituirPessoaSocialProfiles,
+} from '../../services/pessoaSocialProfilesService';
+import {
   TipoEntidade,
   ArquivoHistorico,
   Pessoa,
@@ -215,6 +220,17 @@ export function AdminPessoaForm() {
           if (pessoa && mounted) {
             const arquivosHistoricos = await listarArquivosHistoricosPorPessoa(id);
             const eventosDaPessoa = await listarEventosDaPessoa(id);
+            let loadedSocialProfiles = buildSocialProfilesFromPerson(pessoa);
+            try {
+              const socialProfileRows = await listarPessoaSocialProfiles(id);
+              loadedSocialProfiles = buildSocialProfilesFromRows(socialProfileRows, pessoa);
+            } catch (socialProfilesError) {
+              toast.warning(
+                socialProfilesError instanceof Error
+                  ? `Não foi possível carregar redes sociais versionadas: ${socialProfilesError.message}`
+                  : 'Não foi possível carregar redes sociais versionadas.',
+              );
+            }
             const data = {
               nome_completo: pessoa.nome_completo || '',
               data_nascimento: pessoa.data_nascimento?.toString() || '',
@@ -249,7 +265,7 @@ export function AdminPessoaForm() {
             if (draft || !hasUserEditedRef.current) {
               setFormData(nextFormData);
               setRelacionamentosPendentes(draft?.relacionamentosPendentes ?? []);
-              setSocialProfiles(draft?.socialProfiles ?? buildSocialProfilesFromPerson(pessoa));
+              setSocialProfiles(draft?.socialProfiles ?? loadedSocialProfiles);
               setPersonEvents(draft?.personEvents ?? eventosDaPessoa);
               setPendingMarriageDetails(draft?.pendingMarriageDetails ?? createEmptyMarriageDetails());
               setSearchTerm(draft?.searchTerm ?? '');
@@ -357,9 +373,10 @@ export function AdminPessoaForm() {
     setIsSubmitting(true);
 
     try {
+      const formDataWithSocialProfile = syncFirstSocialProfileToPersonFields(formData, socialProfiles);
       const pessoaData = {
-        ...formData,
-        ...cleanPersonPayload(formData),
+        ...formDataWithSocialProfile,
+        ...cleanPersonPayload(formDataWithSocialProfile),
         data_nascimento: normalizeBirthDate(formData.data_nascimento) || undefined,
         data_falecimento: normalizeBirthDate(formData.data_falecimento) || undefined,
         falecido: isFalecido,
@@ -448,6 +465,17 @@ export function AdminPessoaForm() {
       }
 
       await substituirArquivosHistoricosDaPessoa(pessoaCriada.id, formData.arquivos_historicos || []);
+      try {
+        await substituirPessoaSocialProfiles(pessoaCriada.id, socialProfiles, {
+          exibirNoPerfil: pessoaData.permitir_exibir_rede_social !== false,
+        });
+      } catch (socialProfilesError) {
+        toast.warning(
+          socialProfilesError instanceof Error
+            ? `Pessoa salva, mas não foi possível salvar redes sociais versionadas: ${socialProfilesError.message}`
+            : 'Pessoa salva, mas não foi possível salvar redes sociais versionadas.',
+        );
+      }
       await salvarEventosDaPessoa(pessoaCriada.id, personEvents);
 
       const snapshotAtual = JSON.stringify({
