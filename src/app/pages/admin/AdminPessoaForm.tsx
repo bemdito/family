@@ -17,6 +17,7 @@ import {
   adicionarRelacionamentoComInverso,
   obterTodasPessoas,
 } from '../../services/dataService';
+import { createActivityLog } from '../../services/activityLogService';
 import {
   listarArquivosHistoricosPorPessoa,
   substituirArquivosHistoricosDaPessoa,
@@ -604,11 +605,25 @@ export function AdminPessoaForm() {
       setInsightsActionLoading(true);
       setInsightsError(null);
 
+
       await gerarInsightsPessoa(id, force);
       const refreshedInsights = await obterInsightsGeradosPessoa(id);
       setGeneratedInsights(refreshedInsights);
 
+      await createActivityLog({
+        action: force ? 'person_insights.regenerated' : 'person_insights.generated',
+        entity_type: 'person',
+        entity_id: id,
+        entity_label: formData.nome_completo,
+        metadata: {
+          tipos: ['astrology', 'historical_events'],
+          force,
+          source: 'admin_person_form',
+        },
+      });
+
       toast.success(force ? 'Conteúdos regenerados com sucesso.' : 'Conteúdos gerados com sucesso.');
+
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Erro ao gerar insights.';
       setInsightsError(message);

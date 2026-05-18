@@ -19,6 +19,8 @@ export const ACTIVITY_ACTION_LABELS: Record<ActivityLogAction, string> = {
   'person.updated': 'Pessoa atualizada',
   'person.photo_updated': 'Foto atualizada',
   'person.privacy_updated': 'Privacidade atualizada',
+  'person_insights.generated': 'Insights da pessoa gerados',
+  'person_insights.regenerated': 'Insights da pessoa regenerados',
   'person_event.added': 'Evento da pessoa adicionado',
   'person_event.updated': 'Evento da pessoa atualizado',
   'person_event.removed': 'Evento da pessoa removido',

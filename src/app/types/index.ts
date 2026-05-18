@@ -105,6 +105,8 @@ export type ActivityLogAction =
   | 'notification.dispatch_failed'
   | 'notification.marked_read'
   | 'notification.removed'
+  | 'person_insights.generated'
+  | 'person_insights.regenerated'
   | 'first_access.confirmed';
 
 export type ActivityLogEntityType =
