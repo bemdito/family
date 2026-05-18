@@ -887,6 +887,41 @@
 - O frontend não deve afirmar que secrets do provider existem; essa validação depende de teste controlado da Edge Function.
 - Ausência de `RESEND_API_KEY` ou `NOTIFICATION_EMAIL_FROM` deve resultar em `not_configured`, não em falso sucesso.
 
+### Grau de parentesco/vínculo
+
+- A frente 7.5 está funcionalmente consolidada após QA complementar.
+- O cálculo principal fica em `src/app/utils/relationshipDegree.ts`.
+- O utilitário é puro:
+  - recebe `Pessoa[]` e `Relacionamento[]`;
+  - não chama Supabase;
+  - não usa IA;
+  - não persiste cache;
+  - não lê observações, sobrenome, telefone, endereço, foto, redes sociais, minibio ou curiosidades para inferir vínculo.
+- Os testes unitários ficam em `src/app/utils/relationshipDegree.test.ts` e cobrem:
+  - pai/mãe e filho(a), na orientação real dos dados do app;
+  - irmãos explícitos e derivados por parental compartilhado;
+  - avô/avó e neto(a);
+  - tio(a), sobrinho(a) e primo(a);
+  - cônjuge ativo;
+  - cônjuge inativo ignorado por padrão;
+  - cônjuge inativo incluído quando configurado;
+  - sem vínculo, dados incompletos, duplicados e ciclos.
+- A apresentação fica em `src/app/utils/relationshipDegreeDisplay.ts`, responsável por mensagens, métricas, caminho legível e warnings amigáveis.
+- A UI reutilizável fica em `src/app/components/person/RelationshipFinder.tsx`.
+- Integrações atuais:
+  - Home, em "Curiosidades" > "Qual a minha conexão com alguém?";
+  - Perfil da pessoa, via `RelationshipFinder`.
+- Na Home, o cálculo usa os arrays já carregados pela árvore.
+- No Perfil, o cálculo usa o cache em memória da árvore quando disponível e fallback via `dataService` quando necessário, sempre respeitando o escopo/RLS da tela chamadora.
+- O fluxo visual principal não depende de `regras_parentesco` nem de `parentescos_calculados`.
+- `src/app/services/relationshipResolverService.ts` permanece como legado/parcial mantido por compatibilidade, fora do fluxo principal da 7.5.
+- Limites conhecidos:
+  - não há integração na árvore/Genealogia nem na Visão Completa;
+  - não há cálculo em massa;
+  - cônjuges inativos/separados dependem de dados reais para QA manual completo;
+  - testes de componente ficam para uma infraestrutura futura.
+- Não houve migration, schema, RLS, tabela nova, alteração de dados reais ou alteração de notificações nesta frente.
+
 ---
 
 ## Pendências conhecidas
@@ -988,7 +1023,7 @@ Esta seção relaciona o guia de implementações com os tópicos do plano de pr
 | 7.2 Astrologia e acontecimentos do nascimento | Não implementado | Ainda não há seção de implementação |
 | 7.3 Linha do tempo do usuário | Implementado funcionalmente; evoluções futuras em backlog | Seção "Linha do tempo do usuário" |
 | 7.4 WhatsApp | Concluído no escopo visual/frontend; privacidade forte em banco/API e log opcional ficam como futuras evoluções | Seção "WhatsApp no perfil" |
-| 7.5 Grau de parentesco/vínculo | Não implementado | Ainda não há seção de implementação |
+| 7.5 Grau de parentesco/vínculo | Funcionalmente consolidado após QA | Seção "Grau de parentesco/vínculo" |
 | 7.6 PDF/impressão por área | Não implementado | Ainda não há seção de implementação |
 | 7.7 Legendas visuais da árvore | Não implementado | Ainda não há seção de implementação |
 | 7.8 Favoritos em todo o site | Não implementado nesta rodada | Ver eventuais bases de favoritos, se documentadas |

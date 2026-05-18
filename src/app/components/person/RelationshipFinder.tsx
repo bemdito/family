@@ -6,7 +6,7 @@ import {
   formatRelationshipPersonPath,
   formatRelationshipStepPath,
   getFriendlyRelationshipWarnings,
-  getRelationshipConfidenceLabel,
+  getRelationshipMetricLabels,
   getRelationshipResultMessage,
 } from '../../utils/relationshipDegreeDisplay';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -51,6 +51,7 @@ export function RelationshipFinder({
   const pathText = resultado ? formatRelationshipPersonPath(resultado, pessoas) : '';
   const relationText = resultado ? formatRelationshipStepPath(resultado) : '';
   const friendlyWarnings = resultado ? getFriendlyRelationshipWarnings(resultado) : [];
+  const metricLabels = resultado ? getRelationshipMetricLabels(resultado) : [];
 
   return (
     <Card>
@@ -109,9 +110,9 @@ export function RelationshipFinder({
                   <p>{getRelationshipResultMessage(resultado)}</p>
 
                   <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 sm:grid-cols-3">
-                    <span>Distância: {resultado.distance} conexões</span>
-                    <span>Grau: {resultado.degree ?? 'não definido'}</span>
-                    <span>Confiança: {getRelationshipConfidenceLabel(resultado.confidence)}</span>
+                    {metricLabels.map((metric) => (
+                      <span key={metric}>{metric}</span>
+                    ))}
                   </div>
 
                   {pathText && (

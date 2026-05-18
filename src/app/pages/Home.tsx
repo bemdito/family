@@ -85,7 +85,7 @@ import {
   formatRelationshipPersonPath,
   formatRelationshipStepPath,
   getFriendlyRelationshipWarnings,
-  getRelationshipConfidenceLabel,
+  getRelationshipMetricLabels,
   getRelationshipResultMessage,
 } from '../utils/relationshipDegreeDisplay';
 import {
@@ -966,6 +966,10 @@ export function Home() {
     () => connectionResult ? getFriendlyRelationshipWarnings(connectionResult) : [],
     [connectionResult]
   );
+  const connectionMetricLabels = useMemo(
+    () => connectionResult ? getRelationshipMetricLabels(connectionResult) : [],
+    [connectionResult]
+  );
 
   const curiosityTabs = useMemo(
     () => [
@@ -1645,9 +1649,9 @@ export function Home() {
                         </p>
                         <p className="mt-2">{getRelationshipResultMessage(connectionResult)}</p>
                         <div className="mt-3 grid gap-2 text-xs text-gray-600 sm:grid-cols-3">
-                          <span>Distância: {connectionResult.distance} conexões</span>
-                          <span>Grau: {connectionResult.degree ?? 'não definido'}</span>
-                          <span>Confiança: {getRelationshipConfidenceLabel(connectionResult.confidence)}</span>
+                          {connectionMetricLabels.map((metric) => (
+                            <span key={metric}>{metric}</span>
+                          ))}
                         </div>
                         {connectionPathText && (
                           <p className="mt-3 text-xs text-gray-500">Caminho: {connectionPathText}</p>

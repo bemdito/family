@@ -252,8 +252,8 @@ function buildAdjacency(edges: RelationshipGraphEdge[]) {
 }
 
 export function normalizeRelationshipType(type: TipoRelacionamento): NormalizedRelationshipType {
-  if (type === 'pai' || type === 'mae') return 'parent';
-  if (type === 'filho') return 'child';
+  if (type === 'pai' || type === 'mae') return 'child';
+  if (type === 'filho') return 'parent';
   if (type === 'irmao') return 'sibling';
   return 'spouse';
 }
@@ -301,12 +301,14 @@ export function buildRelationshipGraph(
 
     const active = !inactiveSpouse;
 
+    const directType = normalizedType === 'child' ? 'filho' : relationship.tipo_relacionamento;
+
     addRelationshipEdges({
       edgeMap,
       relationship,
       from,
       to,
-      type: relationship.tipo_relacionamento,
+      type: directType,
       normalizedType,
       active,
       warnings,
@@ -332,7 +334,7 @@ export function buildRelationshipGraph(
         relationship,
         from: to,
         to: from,
-        type: 'filho',
+        type: relationship.tipo_relacionamento,
         normalizedType: 'parent',
         active,
         warnings,

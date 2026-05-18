@@ -17,6 +17,13 @@ const WARNING_MATCHERS: Array<[RegExp, string]> = [
   [/Irmandade derivada/i, 'Irmandade derivada por parental compartilhado.'],
 ];
 
+const GLOBAL_WARNING_WHEN_FOUND_MATCHERS = [
+  /conjugal inativo .*ignorado|conjugais inativos foram ignorados/i,
+  /pessoa inexistente/i,
+  /autoaresta/i,
+  /duplicado/i,
+];
+
 function getPersonName(peopleById: Map<string, Pessoa>, personId: string) {
   return peopleById.get(personId)?.nome_completo?.trim() || 'Pessoa';
 }
@@ -62,6 +69,10 @@ export function getFriendlyRelationshipWarnings(result: RelationshipDegreeResult
   const warnings = new Set<string>();
 
   result.warnings.forEach((warning) => {
+    if (result.found && GLOBAL_WARNING_WHEN_FOUND_MATCHERS.some((pattern) => pattern.test(warning))) {
+      return;
+    }
+
     const match = WARNING_MATCHERS.find(([pattern]) => pattern.test(warning));
     if (match) {
       warnings.add(match[1]);
@@ -71,12 +82,47 @@ export function getFriendlyRelationshipWarnings(result: RelationshipDegreeResult
   return Array.from(warnings);
 }
 
+function humanizeRelationshipDescription(description: string) {
+  return description
+    .replace(/ e mae de /g, ' é mãe de ')
+    .replace(/ e pai de /g, ' é pai de ')
+    .replace(/ e pai\/mãe de /g, ' é pai/mãe de ')
+    .replace(/ e filho\(a\) de /g, ' é filho(a) de ')
+    .replace(/ e irmão\(ã\) de /g, ' é irmão(ã) de ')
+    .replace(/ e cônjuge de /g, ' é cônjuge de ')
+    .replace(/ e ex-cônjuge de /g, ' é ex-cônjuge de ')
+    .replace(/ e avô\/avó de /g, ' é avô/avó de ')
+    .replace(/ e neto\(a\) de /g, ' é neto(a) de ')
+    .replace(/ e tio\(a\) de /g, ' é tio(a) de ')
+    .replace(/ e sobrinho\(a\) de /g, ' é sobrinho(a) de ')
+    .replace(/ e primo\(a\) de /g, ' é primo(a) de ')
+    .replace(/\bHa\b/g, 'Há')
+    .replace(/\bNao\b/g, 'Não')
+    .replace(/\bvinculo\b/g, 'vínculo')
+    .replace(/\bVinculo\b/g, 'Vínculo')
+    .replace(/\bclassificacao\b/g, 'classificação')
+    .replace(/\bespecifica\b/g, 'específica')
+    .replace(/\bversao\b/g, 'versão');
+}
+
 export function getRelationshipResultMessage(result: RelationshipDegreeResult) {
-  if (result.found) return result.description;
+  if (result.found) return humanizeRelationshipDescription(result.description);
 
   if (result.confidence === 'unknown') {
     return 'Dados insuficientes para calcular o vínculo com segurança.';
   }
 
   return 'Nenhum vínculo familiar foi encontrado com os dados disponíveis.';
+}
+
+export function getRelationshipMetricLabels(result: RelationshipDegreeResult) {
+  const labels = [`Conexões: ${result.distance}`];
+
+  if (typeof result.degree === 'number') {
+    labels.push(`Grau: ${result.degree}`);
+  }
+
+  labels.push(`Confiança: ${getRelationshipConfidenceLabel(result.confidence)}`);
+
+  return labels;
 }

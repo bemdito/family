@@ -1891,3 +1891,69 @@ RPCs
 Edge Functions
 secrets
 ```
+
+## Grau de parentesco/vínculo
+
+### Resultado invertido entre pai/mãe e filho(a)
+
+Verificar:
+
+```txt
+src/app/utils/relationshipDegree.ts
+normalizeRelationshipType
+buildRelationshipGraph
+src/app/utils/relationshipDegree.test.ts
+```
+
+Nos dados reais do app, registros `pai`/`mae` indicam que o destino é pai/mãe da origem. Registros `filho` indicam que o destino é filho da origem. Se a UI voltar a mostrar pai/filho invertido, ajustar primeiro o utilitário puro e adicionar teste unitário correspondente.
+
+### Sem vínculo quando deveria haver parentesco
+
+Verificar:
+
+```txt
+src/app/components/person/RelationshipFinder.tsx
+src/app/pages/Home.tsx
+src/app/pages/PersonProfile.tsx
+src/app/services/treeDataCache.ts
+src/app/services/dataService.ts
+```
+
+Confirmar se `pessoas` e `relacionamentos` estão no mesmo escopo visível. No Perfil, conferir se o cache da árvore estava disponível ou se o fallback via `dataService` carregou a base permitida por RLS. Não ampliar acesso do usuário comum para corrigir ausência de dados.
+
+### Warnings excessivos ou duplicados
+
+Verificar:
+
+```txt
+src/app/utils/relationshipDegreeDisplay.ts
+getFriendlyRelationshipWarnings
+GLOBAL_WARNING_WHEN_FOUND_MATCHERS
+```
+
+Warnings técnicos do grafo devem ser traduzidos para mensagens amigáveis. Resultados encontrados não devem ser poluídos por avisos globais que não mudam o vínculo exibido.
+
+### Usuário comum vê dados fora do escopo
+
+Verificar:
+
+```txt
+src/app/pages/Home.tsx
+src/app/pages/PersonProfile.tsx
+src/app/services/dataService.ts
+src/app/services/treeDataCache.ts
+```
+
+A Home deve usar os arrays já carregados pela árvore. O Perfil deve respeitar o cache/fallback já permitido pela tela. O resultado não deve exibir telefone, endereço, e-mail, URL de arquivo, base64, token, secret ou observações internas.
+
+### Resultado textual sem acento ou pouco natural
+
+Verificar:
+
+```txt
+src/app/utils/relationshipDegreeDisplay.ts
+humanizeRelationshipDescription
+getRelationshipResultMessage
+```
+
+Corrigir preferencialmente a camada de display. Evitar mexer no algoritmo central se o problema for apenas copy/UX.

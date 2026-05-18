@@ -89,7 +89,7 @@ describe('calculateRelationshipDegree', () => {
       origin: 'a',
       target: 'b',
       people: people('a', 'b'),
-      relationships: [makeRelationship('r1', 'a', 'b', 'pai')],
+      relationships: [makeRelationship('r1', 'b', 'a', 'pai')],
     });
 
     expect(result.found).toBe(true);
@@ -102,7 +102,7 @@ describe('calculateRelationshipDegree', () => {
       origin: 'a',
       target: 'b',
       people: people('a', 'b'),
-      relationships: [makeRelationship('r1', 'a', 'b', 'mae')],
+      relationships: [makeRelationship('r1', 'b', 'a', 'mae')],
     });
 
     expect(result.found).toBe(true);
@@ -115,7 +115,7 @@ describe('calculateRelationshipDegree', () => {
       origin: 'b',
       target: 'a',
       people: people('a', 'b'),
-      relationships: [makeRelationship('r1', 'a', 'b', 'pai')],
+      relationships: [makeRelationship('r1', 'b', 'a', 'pai')],
     });
 
     expect(result.found).toBe(true);
@@ -129,8 +129,8 @@ describe('calculateRelationshipDegree', () => {
       target: 'c',
       people: people('a', 'b', 'c'),
       relationships: [
-        makeRelationship('r1', 'a', 'b', 'pai'),
-        makeRelationship('r2', 'b', 'c', 'mae'),
+        makeRelationship('r1', 'b', 'a', 'pai'),
+        makeRelationship('r2', 'c', 'b', 'mae'),
       ],
     });
 
@@ -146,8 +146,8 @@ describe('calculateRelationshipDegree', () => {
       target: 'a',
       people: people('a', 'b', 'c'),
       relationships: [
-        makeRelationship('r1', 'a', 'b', 'pai'),
-        makeRelationship('r2', 'b', 'c', 'mae'),
+        makeRelationship('r1', 'b', 'a', 'pai'),
+        makeRelationship('r2', 'c', 'b', 'mae'),
       ],
     });
 
@@ -176,8 +176,8 @@ describe('calculateRelationshipDegree', () => {
       target: 'b',
       people: people('p', 'a', 'b'),
       relationships: [
-        makeRelationship('r1', 'p', 'a', 'pai'),
-        makeRelationship('r2', 'p', 'b', 'pai'),
+        makeRelationship('r1', 'a', 'p', 'pai'),
+        makeRelationship('r2', 'b', 'p', 'pai'),
       ],
     });
 
@@ -194,7 +194,7 @@ describe('calculateRelationshipDegree', () => {
       people: people('a', 'b', 'c'),
       relationships: [
         makeRelationship('r1', 'a', 'b', 'irmao'),
-        makeRelationship('r2', 'b', 'c', 'mae'),
+        makeRelationship('r2', 'c', 'b', 'mae'),
       ],
     });
 
@@ -209,7 +209,7 @@ describe('calculateRelationshipDegree', () => {
       people: people('a', 'b', 'c'),
       relationships: [
         makeRelationship('r1', 'a', 'b', 'irmao'),
-        makeRelationship('r2', 'b', 'c', 'mae'),
+        makeRelationship('r2', 'c', 'b', 'mae'),
       ],
     });
 
@@ -223,10 +223,10 @@ describe('calculateRelationshipDegree', () => {
       target: 'd',
       people: people('p', 'a', 'b', 'c', 'd'),
       relationships: [
-        makeRelationship('r1', 'p', 'a', 'pai'),
-        makeRelationship('r2', 'p', 'b', 'pai'),
-        makeRelationship('r3', 'a', 'c', 'mae'),
-        makeRelationship('r4', 'b', 'd', 'pai'),
+        makeRelationship('r1', 'a', 'p', 'pai'),
+        makeRelationship('r2', 'b', 'p', 'pai'),
+        makeRelationship('r3', 'c', 'a', 'mae'),
+        makeRelationship('r4', 'd', 'b', 'pai'),
       ],
     });
 
@@ -288,9 +288,9 @@ describe('calculateRelationshipDegree', () => {
       target: 'c',
       people: people('a', 'b', 'c'),
       relationships: [
-        makeRelationship('r1', 'a', 'b', 'pai'),
-        makeRelationship('r2', 'b', 'a', 'pai'),
-        makeRelationship('r3', 'b', 'c', 'pai'),
+        makeRelationship('r1', 'b', 'a', 'pai'),
+        makeRelationship('r2', 'a', 'b', 'pai'),
+        makeRelationship('r3', 'c', 'b', 'pai'),
       ],
     });
 
@@ -300,8 +300,8 @@ describe('calculateRelationshipDegree', () => {
 
   it('deduplicates duplicate relationships and warns', () => {
     const graph = buildRelationshipGraph(people('a', 'b'), [
-      makeRelationship('r1', 'a', 'b', 'pai'),
-      makeRelationship('r2', 'a', 'b', 'pai'),
+      makeRelationship('r1', 'b', 'a', 'pai'),
+      makeRelationship('r2', 'b', 'a', 'pai'),
     ]);
 
     const parentEdges = graph.edges.filter((edge) => edge.from === 'a' && edge.to === 'b' && edge.normalizedType === 'parent');
@@ -340,9 +340,9 @@ describe('calculateRelationshipDegree', () => {
       target: 'd',
       people: people('a', 'b', 'c', 'd'),
       relationships: [
-        makeRelationship('r1', 'a', 'b', 'pai'),
-        makeRelationship('r2', 'b', 'c', 'pai'),
-        makeRelationship('r3', 'c', 'd', 'pai'),
+        makeRelationship('r1', 'b', 'a', 'pai'),
+        makeRelationship('r2', 'c', 'b', 'pai'),
+        makeRelationship('r3', 'd', 'c', 'pai'),
       ],
       maxDepth: 2,
     });
@@ -359,7 +359,7 @@ describe('calculateRelationshipDegree', () => {
       relationships: [
         makeRelationship('r1', 'a', 'b', 'conjuge', { subtipo_relacionamento: 'casamento' }),
         makeRelationship('r2', 'b', 'c', 'irmao'),
-        makeRelationship('r3', 'c', 'd', 'pai'),
+        makeRelationship('r3', 'd', 'c', 'pai'),
       ],
     });
 
@@ -374,7 +374,7 @@ describe('calculateRelationshipDegree', () => {
       target: 'b',
       people: people('a', 'b'),
       relationships: [
-        makeRelationship('r1', 'a', 'b', 'pai', {
+        makeRelationship('r1', 'b', 'a', 'pai', {
           subtipo_relacionamento: 'adotivo' as SubtipoRelacionamento,
         }),
       ],
@@ -388,17 +388,17 @@ describe('calculateRelationshipDegree', () => {
 
 describe('relationshipDegree helpers', () => {
   it('normalizes relationship types', () => {
-    expect(normalizeRelationshipType('pai')).toBe('parent');
-    expect(normalizeRelationshipType('mae')).toBe('parent');
-    expect(normalizeRelationshipType('filho')).toBe('child');
+    expect(normalizeRelationshipType('pai')).toBe('child');
+    expect(normalizeRelationshipType('mae')).toBe('child');
+    expect(normalizeRelationshipType('filho')).toBe('parent');
     expect(normalizeRelationshipType('irmao')).toBe('sibling');
     expect(normalizeRelationshipType('conjuge')).toBe('spouse');
   });
 
   it('builds graph with direct, inverse, deduplicated and scoped edges', () => {
     const graph = buildRelationshipGraph(people('a', 'b', 'c'), [
-      makeRelationship('r1', 'a', 'b', 'pai'),
-      makeRelationship('r2', 'a', 'b', 'pai'),
+      makeRelationship('r1', 'b', 'a', 'pai'),
+      makeRelationship('r2', 'b', 'a', 'pai'),
       makeRelationship('r3', 'b', 'c', 'conjuge'),
       makeRelationship('r4', 'a', 'a', 'pai'),
       makeRelationship('r5', 'a', 'missing', 'pai'),
@@ -415,8 +415,8 @@ describe('relationshipDegree helpers', () => {
 
   it('finds direct and two-step paths and returns null when absent or too deep', () => {
     const graph = buildRelationshipGraph(people('a', 'b', 'c', 'x'), [
-      makeRelationship('r1', 'a', 'b', 'pai'),
-      makeRelationship('r2', 'b', 'c', 'pai'),
+      makeRelationship('r1', 'b', 'a', 'pai'),
+      makeRelationship('r2', 'c', 'b', 'pai'),
     ]);
 
     expect(findRelationshipPath(graph, 'a', 'b')).toHaveLength(1);
@@ -426,14 +426,14 @@ describe('relationshipDegree helpers', () => {
   });
 
   it('classifies relationship confidence', () => {
-    const parentalGraph = buildRelationshipGraph(people('a', 'b'), [makeRelationship('r1', 'a', 'b', 'pai')]);
+    const parentalGraph = buildRelationshipGraph(people('a', 'b'), [makeRelationship('r1', 'b', 'a', 'pai')]);
     const conjugalGraph = buildRelationshipGraph(people('a', 'b'), [makeRelationship('r2', 'a', 'b', 'conjuge')]);
     const indirectGraph = buildRelationshipGraph(people('a', 'b', 'c', 'd', 'e', 'f'), [
-      makeRelationship('r1', 'a', 'b', 'pai'),
-      makeRelationship('r2', 'b', 'c', 'pai'),
-      makeRelationship('r3', 'c', 'd', 'pai'),
-      makeRelationship('r4', 'd', 'e', 'pai'),
-      makeRelationship('r5', 'e', 'f', 'pai'),
+      makeRelationship('r1', 'b', 'a', 'pai'),
+      makeRelationship('r2', 'c', 'b', 'pai'),
+      makeRelationship('r3', 'd', 'c', 'pai'),
+      makeRelationship('r4', 'e', 'd', 'pai'),
+      makeRelationship('r5', 'f', 'e', 'pai'),
     ]);
 
     expect(getRelationshipConfidence(findRelationshipPath(parentalGraph, 'a', 'b'))).toBe('high');
