@@ -348,6 +348,135 @@ insert(activityPayload)
 
 ---
 
+## 6A. Astrologia e acontecimentos do nascimento
+
+### Arquivos envolvidos
+
+```txt
+src/app/components/person/PersonDataView.tsx
+src/app/pages/admin/AdminPessoaForm.tsx
+src/app/services/personInsightsService.ts
+src/app/services/activityLogService.ts
+src/app/types/index.ts
+src/app/pages/Home.tsx
+src/app/pages/PersonProfile.tsx
+supabase/functions/generate-person-insights/index.ts
+supabase/config.toml
+supabase/migrations/20260518174542_reconcile_person_generated_insights_schema.sql
+```
+
+### Se der erro
+
+#### Perfil dispara geração automática de IA
+
+- Verificar `PersonDataView.tsx`.
+- O perfil deve chamar apenas `obterInsightsGeradosPessoa`.
+- O perfil não deve importar nem chamar `gerarInsightsPessoa`.
+- Conteúdo ausente deve aparecer como estado vazio/informativo.
+- Usuário comum não deve conseguir disparar geração ou regeneração.
+
+#### Cards de astrologia ou acontecimentos não aparecem no perfil
+
+- Verificar se a pessoa é humana, possui data de nascimento e permite exibição da data.
+- Verificar se existem registros em `public.person_generated_insights` para a pessoa.
+- Verificar se os tipos são exatamente:
+  - `astrology`
+  - `historical_events`
+- Verificar `getInsightByType` em `personInsightsService.ts`.
+- Verificar renderização em `PersonDataView.tsx`.
+
+#### Botões admin de geração/regeneração não aparecem
+
+- Verificar `/admin/pessoas/:id/editar` em `AdminPessoaForm.tsx`.
+- Os botões só devem aparecer em edição de pessoa existente.
+- Confirmar que a pessoa possui data de nascimento exibível.
+- Confirmar que `humano_ou_pet` não é `Pet`.
+- Confirmar que `permitir_exibir_data_nascimento` não está falso.
+
+#### Admin não consegue gerar ou regenerar insights
+
+- Verificar `gerarInsightsPessoa` em `personInsightsService.ts`.
+- Verificar se a Edge Function `generate-person-insights` está deployada:
+
+```bash
+supabase functions list
+```
+
+- Verificar secrets no Supabase remoto:
+  - `OPENAI_API_KEY`
+  - `SUPABASE_URL`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+- Verificar logs da Edge Function no Supabase Dashboard.
+- Verificar se a tabela `public.person_generated_insights` existe e se possui RLS/policies esperadas.
+
+#### Registros não aparecem no banco após geração
+
+- Verificar no SQL Editor:
+
+```sql
+select id, pessoa_id, tipo, data_nascimento, status, modelo, prompt_version, created_at, updated_at
+from public.person_generated_insights
+order by updated_at desc
+limit 30;
+```
+
+- Confirmar que a Edge Function faz `upsert` por `pessoa_id,tipo`.
+- Confirmar que `tipo` respeita o check constraint: `astrology` ou `historical_events`.
+- Confirmar que `status` respeita o check constraint: `pending`, `completed` ou `error`.
+
+#### Logs de geração/regeneração não aparecem
+
+- Verificar `createActivityLog` em `AdminPessoaForm.tsx`.
+- Verificar ações em `types/index.ts`:
+  - `person_insights.generated`
+  - `person_insights.regenerated`
+- Verificar labels em `activityLogService.ts`.
+- Verificar RLS de `activity_logs` e se `actor_user_id` está preenchido.
+- Confirmar no SQL Editor:
+
+```sql
+select action, entity_type, entity_id, entity_label, metadata, created_at
+from public.activity_logs
+where action in ('person_insights.generated', 'person_insights.regenerated')
+order by created_at desc
+limit 20;
+```
+
+#### Metadata de logs contém dado sensível
+
+- Corrigir imediatamente a chamada de `createActivityLog` em `AdminPessoaForm.tsx`.
+- Não salvar:
+  - prompt completo;
+  - conteúdo gerado;
+  - data de nascimento;
+  - telefone;
+  - endereço;
+  - e-mail;
+  - URL completa;
+  - base64;
+  - token;
+  - secret;
+  - chave OpenAI;
+  - service role.
+- Metadata segura esperada:
+  - `tipos`
+  - `force`
+  - `source`
+
+#### Migration de insights aparece desalinhada
+
+- Verificar:
+
+```bash
+supabase migration list
+```
+
+- A migration `20260518174542_reconcile_person_generated_insights_schema.sql` deve aparecer em `Local` e `Remote`.
+- O schema remoto já existia antes da migration local, por isso o histórico foi alinhado por `supabase migration repair --status applied 20260518174542`.
+- Não usar `supabase db push` para essa frente se `migration list` já estiver alinhado.
+
+---
+
 ## 7. Storage / Uploads
 
 ### Arquivos envolvidos

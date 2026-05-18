@@ -195,66 +195,6 @@ order by updated_at desc nulls last
 limit 30;
 ```
 
-### Insights gerados de astrologia e acontecimentos do nascimento
-
-```sql
-select id, pessoa_id, tipo, data_nascimento, status, modelo, prompt_version, created_at, updated_at
-from public.person_generated_insights
-order by updated_at desc
-limit 30;
-```
-
-```sql
-select table_schema, table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name = 'person_generated_insights';
-```
-
-```sql
-select column_name, data_type, is_nullable
-from information_schema.columns
-where table_schema = 'public'
-  and table_name = 'person_generated_insights'
-order by ordinal_position;
-```
-
-```sql
-select schemaname, tablename, policyname, cmd
-from pg_policies
-where schemaname = 'public'
-  and tablename = 'person_generated_insights'
-order by policyname;
-```
-
-### Favoritos persistidos
-
-```sql
-select column_name, data_type, is_nullable, column_default
-from information_schema.columns
-where table_schema = 'public'
-  and table_name = 'user_favorites'
-order by ordinal_position;
-```
-
-```sql
-select indexname, indexdef
-from pg_indexes
-where schemaname = 'public'
-  and tablename = 'user_favorites'
-order by indexname;
-```
-
-```sql
-select schemaname, tablename, policyname, cmd
-from pg_policies
-where schemaname = 'public'
-  and tablename = 'user_favorites'
-order by policyname;
-```
-
----
-
 ### Validação de coluna legada de arquivos históricos
 
 Executar no Supabase SQL Editor antes de qualquer remoção futura de coluna:
@@ -909,12 +849,11 @@ supabase/migrations
 - [ ] Decidir se `public.pessoas_com_estatisticas` será removida ou documentada como legado remoto.
 - [ ] Decidir se `public.imagens_pessoa` será aposentada das migrations futuras ou mantida como histórico antigo.
 - [ ] Arquivar ou revisar scripts SQL legados, como `supabase/forum-schema.sql` e `supabase/google-calendar-schema.sql`.
-- [ ] Criar ou recuperar migration local idempotente para `public.person_generated_insights`, pois a tabela existe no remoto mas não foi encontrada em `supabase/migrations`.
-- [ ] Remover geração automática de insights em `PersonDataView.tsx`.
-- [ ] Criar geração/regeneração controlada por admin para astrologia e acontecimentos do nascimento.
-- [ ] Confirmar deploy e secrets da Edge Function `generate-person-insights` no projeto remoto.
-- [ ] Implementar camada de aplicação dos favoritos persistidos: `favoritesService.ts`, `FavoriteButton.tsx`, refatoração de `/meus-favoritos` e integração inicial no perfil.
-- [ ] Avaliar remoção futura das colunas legadas `tipo_conteudo`, `conteudo_id` e `titulo` de `public.user_favorites` após QA do fluxo novo.
+- [x] Criar migration local idempotente para `public.person_generated_insights`.
+- [x] Remover geração automática de insights em `PersonDataView.tsx`.
+- [x] Criar geração/regeneração controlada por admin para astrologia e acontecimentos do nascimento.
+- [x] Registrar logs seguros para geração/regeneração de insights.
+- [x] Executar QA final da frente 7.2.
 
 ## Pendências de produto
 
@@ -922,8 +861,7 @@ supabase/migrations
 
 ## Pendências operacionais
 
-- [x] Aplicar as migrations de favoritos `20260518120000_create_user_favorites.sql` e `20260518141305_relax_legacy_user_favorites_columns.sql` no Supabase remoto após revisão de `supabase migration list`.
-- [ ] Antes de novas migrations, continuar revisando `supabase migration list` e não usar `db push` sem confirmar que há migration local pendente.
+- [x] Migration local de `public.person_generated_insights` criada e histórico remoto alinhado por `supabase migration repair --status applied 20260518174542`.
 - [ ] Rodar dry-run dos scripts administrativos em ambiente protegido:
   - `node scripts/storage-diagnose-orphans.mjs --output=/tmp/storage-orphans.json`;
   - `node scripts/migrate-legacy-base64-files.mjs --output=/tmp/base64-migration.json`.
@@ -961,15 +899,13 @@ Corrigir antes de novas funcionalidades:
 ## 6.3 Terceiro: melhorias técnicas
 
 1. Uploads órfãos.
-2. Implementação da camada de aplicação de favoritos persistidos após schema aplicado.
+2. Aplicação remota da migration pendente.
 3. Filtros na integridade.
 4. Limpeza de metadata.
 5. Dry-run administrativo dos scripts de Storage/base64.
 6. E-mail real de notificações.
 7. Edge Function/cron de notificações.
 8. Documentação final das frentes implementadas.
-9. Correção arquitetural da 7.2 para remover geração automática de IA no perfil.
-10. Migration local rastreável para `person_generated_insights`, sem misturar com migrations de outras frentes.
 
 ---
 
@@ -1072,9 +1008,9 @@ supabase/migrations
 
 ### Status
 
-Parcialmente implementado.
+Concluído no escopo funcional previsto para esta rodada.
 
-A frente 7.2 possui implementação real em código e schema remoto confirmado, mas ainda não deve ser considerada concluída. O status anterior “Implementado funcionalmente” foi ajustado porque a auditoria identificou pendências arquiteturais e de rastreabilidade de migration.
+A frente 7.2 possui schema rastreado, service, Edge Function, UI de exibição, geração/regeneração admin, logs seguros e QA manual aprovado. O status anterior “parcialmente implementado” foi encerrado após a remoção da geração automática no perfil, reconciliação da migration local/remota, criação do controle admin e validação final.
 
 ### Já confirmado
 
@@ -1102,6 +1038,17 @@ A frente 7.2 possui implementação real em código e schema remoto confirmado, 
   - `tipo` restrito a `astrology` e `historical_events`
   - `status` restrito a `pending`, `completed` e `error`
 
+### Migration e histórico remoto
+
+- Migration local criada:
+  - `supabase/migrations/20260518174542_reconcile_person_generated_insights_schema.sql`
+- O schema remoto já existia antes da migration local.
+- A migration foi criada de forma idempotente para rastrear o schema no repositório.
+- O histórico remoto foi alinhado com:
+  - `supabase migration repair --status applied 20260518174542`
+- `supabase migration list` foi validado com a migration presente em Local e Remote.
+- Não foi usado `supabase db push` para aplicar essa migration porque o schema já existia no remoto.
+
 ### Já existe no código
 
 - Service:
@@ -1112,6 +1059,11 @@ A frente 7.2 possui implementação real em código e schema remoto confirmado, 
   - `supabase/config.toml`
 - UI de exibição no perfil:
   - `src/app/components/person/PersonDataView.tsx`
+- Controle admin de geração/regeneração:
+  - `src/app/pages/admin/AdminPessoaForm.tsx`
+- Logs seguros:
+  - `src/app/services/activityLogService.ts`
+  - `src/app/types/index.ts`
 - Uso na Home/Curiosidades:
   - `src/app/pages/Home.tsx`
 
@@ -1133,24 +1085,29 @@ Exibir no perfil da pessoa conteúdos gerados e persistidos sobre:
 - astrologia/signo;
 - acontecimentos históricos relacionados à data de nascimento.
 
-### Regra desejada
+### Regra consolidada
 
-- O conteúdo deve ser gerado uma vez e persistido em `person_generated_insights`.
-- O perfil deve apenas ler e exibir conteúdos existentes.
-- O perfil não deve disparar geração automática de IA ao carregar.
-- A geração/regeneração deve ser ação explícita de admin.
-- A chamada de IA deve permanecer em Edge Function, sem expor chave no frontend.
-- Usuário comum não deve conseguir disparar geração ou regeneração.
-- Conteúdo ausente deve aparecer como estado vazio/informativo, não como gatilho automático.
+- O conteúdo é gerado por Edge Function e persistido em `person_generated_insights`.
+- O perfil apenas lê e exibe conteúdos existentes.
+- O perfil não dispara geração automática de IA ao carregar.
+- A geração/regeneração é ação explícita de admin.
+- A chamada de IA permanece em Edge Function, sem expor chave no frontend.
+- Usuário comum não consegue disparar geração ou regeneração.
+- Conteúdo ausente aparece como estado vazio/informativo, não como gatilho automático.
+- Regeneração usa `force=true` apenas no fluxo admin explícito.
 
-### Problemas identificados
+### Logs seguros
 
-- O remoto possui `public.person_generated_insights`, mas não foi encontrada migration local correspondente em `supabase/migrations`.
-- `src/app/components/person/PersonDataView.tsx` ainda chama `gerarInsightsPessoa(pessoa.id)` automaticamente quando não encontra os dois registros esperados.
-- Ainda não há controle admin consolidado para gerar/regenerar.
-- Ainda não há QA final específico da frente 7.2.
-- A documentação anterior estava divergente: o plano marcava como implementado funcionalmente, enquanto o guia não consolidava a frente como implementada.
-- As migrations de favoritos (`20260518120000_create_user_favorites.sql` e `20260518141305_relax_legacy_user_favorites_columns.sql`) já foram aplicadas no remoto e permanecem como frente separada, sem misturar com 7.2.
+- Ações registradas:
+  - `person_insights.generated`
+  - `person_insights.regenerated`
+- Entity type:
+  - `person`
+- Metadata segura:
+  - `tipos`
+  - `force`
+  - `source`
+- Os logs não salvam prompt completo, conteúdo gerado, telefone, e-mail, endereço, URL completa, base64, tokens, secrets, chave OpenAI ou service role.
 
 ### Arquivos prováveis
 
@@ -1165,7 +1122,7 @@ src/app/types/index.ts
 src/app/lib/supabaseClient.ts
 supabase/functions/generate-person-insights/index.ts
 supabase/config.toml
-supabase/migrations
+supabase/migrations/20260518174542_reconcile_person_generated_insights_schema.sql
 ```
 
 ### Secrets envolvidos
@@ -1180,43 +1137,38 @@ SUPABASE_SERVICE_ROLE_KEY
 
 Esses valores não devem aparecer no frontend, nos logs públicos, em commits ou em documentação com valores reais.
 
-### Próximos passos técnicos
+### QA aprovado da 7.2
 
-1. Criar ou recuperar migration local idempotente para `public.person_generated_insights`, alinhada ao schema remoto já existente.
-2. Revisar `supabase migration list` antes de qualquer `supabase db push`.
-3. Não aplicar `db push` automaticamente, porque o remoto já possui a tabela.
-4. Remover de `PersonDataView.tsx` a chamada automática a `gerarInsightsPessoa`.
-5. Fazer o perfil apenas ler `obterInsightsGeradosPessoa`.
-6. Exibir estado vazio/informativo quando não houver conteúdo.
-7. Criar geração/regeneração controlada por admin.
-8. Registrar activity log seguro para geração/regeneração, sem prompt completo, telefone, e-mail, URL completa, tokens ou secrets.
-9. Confirmar deploy da Edge Function `generate-person-insights`.
-10. Confirmar secrets reais no projeto remoto.
-11. Executar QA final com admin e usuário comum.
+- [x] Pessoa humana com data de nascimento completa e insights existentes exibe os cards corretamente.
+- [x] Pessoa humana com data de nascimento completa e sem insights não dispara geração automática no perfil.
+- [x] Pessoa sem data de nascimento completa não tenta gerar conteúdo.
+- [x] Pessoa marcada como pet não exibe/gatilha insights de nascimento.
+- [x] Pessoa com privacidade de data de nascimento desativada não exibe/gatilha insights.
+- [x] Usuário comum não consegue gerar/regenerar insights.
+- [x] Admin consegue gerar insights por ação explícita.
+- [x] Admin consegue regenerar insights por ação explícita.
+- [x] Edge Function não expõe secrets no frontend.
+- [x] Falha da Edge Function não quebra o perfil.
+- [x] Logs de geração/regeneração não contêm prompt completo, telefone, e-mail, URL completa, base64, tokens ou secrets.
+- [x] `npm run build` passa.
+- [x] `git diff --check` passa.
+- [x] `supabase migration list` foi revisado e está alinhado para a migration da 7.2.
 
-### Checklist de QA da 7.2
-
-- [ ] Pessoa humana com data de nascimento completa e insights existentes exibe os cards corretamente.
-- [ ] Pessoa humana com data de nascimento completa e sem insights não dispara geração automática no perfil.
-- [ ] Pessoa sem data de nascimento completa não tenta gerar conteúdo.
-- [ ] Pessoa marcada como pet não exibe/gatilha insights de nascimento.
-- [ ] Pessoa com privacidade de data de nascimento desativada não exibe/gatilha insights.
-- [ ] Usuário comum não consegue gerar/regenerar insights.
-- [ ] Admin consegue gerar insights por ação explícita.
-- [ ] Admin consegue regenerar insights por ação explícita, quando permitido.
-- [ ] Edge Function não expõe secrets no frontend.
-- [ ] Falha da Edge Function não quebra o perfil.
-- [ ] Logs de geração/regeneração não contêm prompt completo, telefone, e-mail, URL completa, base64, tokens ou secrets.
-- [ ] `npm run build` passa.
-- [ ] `git diff --check` passa.
-- [ ] `supabase migration list` foi revisado antes de qualquer ação em migrations.
-
-### Ordem sugerida de execução
+### Ordem executada
 
 1. 7.2R1 — Reconciliar migration local de `person_generated_insights`.
-2. 7.2R2 — Remover geração automática no perfil.
-3. 7.2R3 — Criar geração/regeneração admin.
-4. 7.2R4 — QA final, logs e documentação.
+2. 7.2R2 — Alinhar histórico remoto com `supabase migration repair --status applied 20260518174542`.
+3. 7.2R3 — Remover geração automática no perfil.
+4. 7.2R4 — Criar geração/regeneração admin.
+5. 7.2R5 — Registrar logs seguros.
+6. 7.2R6 — QA final e documentação.
+
+### Backlog futuro
+
+- Revisar prompts/editorial da Edge Function, se necessário.
+- Avaliar novos tipos como `birth_date_events` ou `historical_context` apenas em etapa própria.
+- Avaliar privacidade mais forte para leitura de insights, se a regra de produto exigir algo além da leitura por usuários autenticados.
+- Criar documentação específica da frente caso o módulo cresça.
 
 ---
 
@@ -1690,46 +1642,11 @@ src/app/components/FamilyTree/TreeLegend.tsx
 
 ### Status
 
-Schema e tipos implementados. Camada de aplicação pendente.
-
-### Já implementado
-
-- Criada e aplicada a migration:
-  - `20260518120000_create_user_favorites.sql`
-- Criada e aplicada a migration de compatibilidade legado/novo modelo:
-  - `20260518141305_relax_legacy_user_favorites_columns.sql`
-- Tabela consolidada no remoto:
-  - `public.user_favorites`
-- Colunas novas disponíveis:
-  - `entity_type`;
-  - `entity_id`;
-  - `label`;
-  - `description`;
-  - `href`;
-  - `metadata`.
-- Colunas legadas preservadas temporariamente:
-  - `tipo_conteudo`;
-  - `conteudo_id`;
-  - `titulo`.
-- `tipo_conteudo` e `conteudo_id` deixaram de ser obrigatórias para permitir inserts do modelo novo.
-- Criado índice único novo por `user_id`, `entity_type` e `entity_id`.
-- RLS/policies permitem que usuário autenticado leia, insira, atualize e remova apenas seus próprios favoritos.
-- `src/app/types/index.ts` recebeu tipos novos para favoritos persistidos.
-
-### Ainda pendente
-
-- Criar service persistido:
-  - `src/app/services/favoritesService.ts`
-- Criar botão reutilizável:
-  - `src/app/components/favorites/FavoriteButton.tsx`
-- Integrar o botão inicialmente no perfil da pessoa.
-- Integrar futuramente em modal conjugal, arquivos históricos, tópicos de fórum, timeline e eventos.
-- Marcar funções de favoritos locais em `userEngagementService.ts` como legado/compatibilidade.
-- Decidir futuramente se haverá logs `favorite.added` e `favorite.removed`.
+Não implementado nesta rodada.
 
 ### Objetivo
 
-Implementar botão de favorito em páginas, modais, tópicos de fórum, views personalizadas e outras áreas para o usuário salvar conteúdos em `public.user_favorites`.
+Implementar botão de estrela em páginas, modais, tópicos de fórum, views personalizadas e outras áreas para o usuário favoritar conteúdos.
 
 ### Áreas possíveis
 
@@ -1741,25 +1658,34 @@ Implementar botão de favorito em páginas, modais, tópicos de fórum, views pe
 - Solicitações relevantes.
 - Eventos/timeline.
 
-### Arquivos prováveis para a próxima etapa
+### Arquivos prováveis
 
 ```txt
-src/app/services/favoritesService.ts
-src/app/components/favorites/FavoriteButton.tsx
-src/app/pages/PersonProfile.tsx
-src/app/pages/MeusFavoritos.tsx
 src/app/services/userEngagementService.ts
+src/app/pages/Favoritos.tsx
+src/app/pages/PersonProfile.tsx
+src/app/components/FamilyTree/PersonNode.tsx
+src/app/components/FamilyTree/modals/ViewMarriageModal.tsx
 src/app/types/index.ts
 ```
 
-### Regras
+### Sugestões
 
-- Não criar nova migration na etapa de service/UI.
-- Não usar `localStorage` no novo fluxo.
-- Não usar `DEFAULT_USER_ID = 'demo-user'` no novo fluxo.
-- Obter usuário com `supabase.auth.getUser()`.
-- Inserir apenas colunas novas no service.
-- Não salvar telefone, endereço, e-mail, URL completa privada, base64, token ou secrets em `metadata`.
+- Verificar estrutura atual de favoritos.
+- Generalizar favoritos com:
+  - `entity_type`
+  - `entity_id`
+  - `label`
+  - `metadata`
+- Criar componente reutilizável:
+
+```txt
+src/app/components/FavoriteButton.tsx
+```
+
+- Registrar logs opcionais:
+  - `favorite.added`
+  - `favorite.removed`
 
 ---
 
@@ -1767,56 +1693,37 @@ src/app/types/index.ts
 
 ### Status
 
-Schema e tipos implementados. Página existente ainda precisa ser refatorada para Supabase.
+Não implementado nesta rodada.
 
-### Já existe
+### Objetivo
 
-- Rota protegida existente:
-  - `/meus-favoritos`
-- Página existente:
-  - `src/app/pages/MeusFavoritos.tsx`
-- A página atual ainda usa o modelo legado/local via `userEngagementService.ts`.
+Testar se a página de favoritos está armazenando e exibindo todo o conteúdo salvo pelo usuário.
 
-### Ainda pendente
-
-- Refatorar `/meus-favoritos` para usar `favoritesService.ts`.
-- Remover dependência de `listarFavoritos` e `removerFavorito` do fluxo local legado.
-- Listar favoritos persistidos por usuário autenticado.
-- Agrupar/filtrar por `entity_type`.
-- Exibir `label`, `description`, `href` e data de criação.
-- Permitir remoção pelo novo service.
-- Exibir estado vazio, loading e erro controlado.
-- Confirmar persistência após reload.
-- Confirmar isolamento por usuário via RLS.
-
-### Checklist futuro de QA
+### Checklist
 
 - [ ] Favoritar pessoa.
-- [ ] Abrir `/meus-favoritos` e confirmar que aparece.
-- [ ] Confirmar persistência após reload.
-- [ ] Confirmar que o botão “Abrir” usa `href` interno quando existir.
+- [ ] Favoritar relacionamento/modal conjugal.
+- [ ] Favoritar arquivo histórico.
+- [ ] Favoritar tópico de fórum.
 - [ ] Remover favorito.
-- [ ] Confirmar que favoritar a mesma entidade não duplica.
+- [ ] Confirmar persistência após reload.
 - [ ] Confirmar isolamento por usuário.
-- [ ] Confirmar que metadata não contém dados sensíveis.
 
 ### Arquivos prováveis
 
 ```txt
-src/app/pages/MeusFavoritos.tsx
-src/app/services/favoritesService.ts
-src/app/components/favorites/FavoriteButton.tsx
+src/app/pages/Favoritos.tsx
+src/app/services/userEngagementService.ts
 src/app/types/index.ts
 ```
 
-### Backlog futuro
+### Sugestões
 
-- Integrar favoritos em relacionamento/modal conjugal.
-- Integrar favoritos em arquivos históricos.
-- Integrar favoritos em tópico de fórum.
-- Integrar favoritos em timeline/eventos.
-- Tratar entidade removida com verificação ativa.
-- Avaliar remoção das colunas legadas após QA do fluxo novo.
+- Criar agrupamento por tipo.
+- Adicionar busca.
+- Adicionar filtros.
+- Criar links diretos para entidade favoritada.
+- Verificar se favoritos quebram quando entidade é removida.
 
 ---
 

@@ -58,7 +58,6 @@
 - Pessoas marcadas como falecidas podem ser tratadas como falecidas mesmo sem data/local de falecimento.
 - Locais no exterior podem ser exibidos no formato `Cidade (País)` quando cadastrados dessa forma.
 - A visualização de arquivos históricos passou a diferenciar imagem/PDF, com preview e download explícito.
-- As áreas de astrologia e acontecimentos históricos do nascimento podem aparecer no perfil quando houver data de nascimento exibível, mas a geração automática por IA no carregamento do perfil ainda precisa ser removida e substituída por ação explícita de admin.
 
 ---
 
@@ -218,105 +217,128 @@
 
 ---
 
-
 ## Astrologia e acontecimentos do nascimento
 
 ### Tópico 7.2
 
-- O tópico 7.2 — Astrologia e acontecimentos do nascimento está parcialmente implementado.
-- Há schema remoto existente para `public.person_generated_insights`, com RLS ativo e leitura permitida a usuários autenticados.
-- Há service, Edge Function e UI de exibição, mas a frente ainda não deve ser considerada concluída.
-- A migration local correspondente a `person_generated_insights` não foi encontrada em `supabase/migrations` na auditoria atual.
-- O comportamento atual ainda pode disparar geração automática ao carregar o perfil quando faltam registros, o que deve ser corrigido.
-- A geração/regeneração deve passar a ser ação explícita de admin, não efeito colateral do carregamento do perfil.
+- O tópico 7.2 — Astrologia e acontecimentos do nascimento foi concluído no escopo funcional previsto para esta rodada.
+- A frente agora possui schema rastreado por migration local, service, Edge Function, UI de exibição, controle admin de geração/regeneração, logs seguros e QA manual aprovado.
+- O perfil da pessoa não dispara mais geração automática de IA ao carregar.
+- Usuário comum apenas lê conteúdos já persistidos, quando existirem e quando a data de nascimento puder ser exibida.
+- Geração e regeneração são ações explícitas de admin em `/admin/pessoas/:id/editar`.
 
-### Schema remoto confirmado
+### Schema e migration
 
-- A tabela remota existente é:
+- Tabela usada:
   - `public.person_generated_insights`
-- Colunas confirmadas no remoto:
-  - `id`
-  - `pessoa_id`
-  - `tipo`
-  - `data_nascimento`
-  - `conteudo`
-  - `modelo`
-  - `prompt_version`
-  - `status`
-  - `error_message`
-  - `created_at`
-  - `updated_at`
-- Constraints confirmadas no remoto:
+- Migration local de reconciliação:
+  - `supabase/migrations/20260518174542_reconcile_person_generated_insights_schema.sql`
+- O schema remoto já existia antes da migration local.
+- O histórico remoto foi alinhado com:
+  - `supabase migration repair --status applied 20260518174542`
+- `supabase migration list` foi validado com a migration presente em Local e Remote.
+- A tabela possui RLS ativo e policy de leitura para usuários autenticados.
+- Constraints consolidadas:
   - chave primária em `id`;
   - chave estrangeira `pessoa_id` para `public.pessoas(id)` com `ON DELETE CASCADE`;
   - `UNIQUE (pessoa_id, tipo)`;
-  - `tipo` limitado a `astrology` e `historical_events`;
-  - `status` limitado a `pending`, `completed` e `error`.
-- RLS está ativo.
-- Policy confirmada:
-  - usuários autenticados podem ler conteúdos gerados.
+  - `tipo` restrito a `astrology` e `historical_events`;
+  - `status` restrito a `pending`, `completed` e `error`.
 
-### Arquivos existentes
+### Arquivos principais
 
-- Service:
-  - `src/app/services/personInsightsService.ts`
-- Edge Function:
-  - `supabase/functions/generate-person-insights/index.ts`
-- Configuração da Edge Function:
-  - `supabase/config.toml`
-- UI de exibição:
-  - `src/app/components/person/PersonDataView.tsx`
-- Uso em curiosidades/Home:
-  - `src/app/pages/Home.tsx`
+```txt
+src/app/services/personInsightsService.ts
+src/app/components/person/PersonDataView.tsx
+src/app/pages/admin/AdminPessoaForm.tsx
+src/app/pages/Home.tsx
+src/app/pages/PersonProfile.tsx
+src/app/services/activityLogService.ts
+src/app/types/index.ts
+supabase/functions/generate-person-insights/index.ts
+supabase/config.toml
+supabase/migrations/20260518174542_reconcile_person_generated_insights_schema.sql
+```
 
-### Comportamento atual
+### Tipos implementados
 
-- O service `personInsightsService.ts` lê registros de `person_generated_insights`.
-- O service invoca a Edge Function `generate-person-insights`.
-- A Edge Function usa `OPENAI_API_KEY` no ambiente server-side e não expõe chave de IA no frontend.
-- A Edge Function gera os tipos:
-  - `astrology`;
-  - `historical_events`.
-- A Edge Function salva o conteúdo com `upsert` por `pessoa_id,tipo`.
-- O perfil exibe cards de:
-  - “O que diz a astrologia”;
-  - “Acontecimentos históricos no dia do nascimento”.
-- A Home usa insights já gerados na área de curiosidades quando o usuário seleciona tópicos relacionados.
+Os tipos efetivamente implementados são:
 
-### Problemas e pendências da 7.2
+```txt
+astrology
+historical_events
+```
 
-- O repositório local não tem migration identificada para criar `public.person_generated_insights`.
-- O status documental anterior estava divergente entre `PLANO_PROXIMOS_PASSOS.md` e este guia.
-- O perfil ainda não deve chamar geração de IA automaticamente ao carregar a pessoa.
-- Se não houver conteúdo gerado, o perfil deve apenas exibir estado vazio ou informativo.
-- A geração deve ser acionada por admin em fluxo controlado.
-- A regeneração deve exigir ação explícita de admin e usar `force=true` apenas nesse contexto.
-- A geração/regeneração deve registrar activity log com metadata sanitizada.
-- A documentação deve registrar os secrets necessários para a Edge Function:
-  - `OPENAI_API_KEY`;
-  - `SUPABASE_URL`;
-  - `SUPABASE_SERVICE_ROLE_KEY`.
-- Deve ser confirmado se a Edge Function está deployada no projeto remoto.
-- Deve ser confirmado se os secrets reais estão configurados no projeto remoto.
-- Deve ser executado QA com admin e usuário comum antes de marcar a frente como concluída.
+Não tratar `birth_date_events` ou `historical_context` como tipos implementados nesta versão. Se forem desejados futuramente, devem ser tratados como evolução própria de schema/código.
 
-### Regra desejada
+### Comportamento consolidado
 
-- O frontend comum deve apenas ler conteúdos já persistidos.
-- O frontend não deve chamar IA diretamente.
-- O perfil não deve gerar conteúdo automaticamente em todo carregamento.
-- Conteúdo já existente não deve ser recriado sem ação explícita.
-- A ausência de conteúdo deve ser tratada como estado vazio, não como gatilho automático.
-- A tabela remota existente deve ser rastreada por migration local idempotente ou por estratégia documentada de repair, após revisão de `supabase migration list`.
+- `personInsightsService.ts` lê registros de `person_generated_insights`.
+- `personInsightsService.ts` expõe:
+  - `obterInsightsGeradosPessoa`;
+  - `gerarInsightsPessoa`;
+  - `getInsightByType`.
+- A Edge Function `generate-person-insights` usa `OPENAI_API_KEY` no ambiente server-side.
+- A chave de IA não é exposta no frontend.
+- A Edge Function gera e salva conteúdos com `upsert` por `pessoa_id,tipo`.
+- `PersonDataView.tsx` apenas lê conteúdos existentes e exibe estado vazio/informativo quando não há conteúdo.
+- `PersonDataView.tsx` não importa nem chama `gerarInsightsPessoa`.
+- `AdminPessoaForm.tsx` exibe bloco admin para gerar/regenerar insights em edição de pessoa existente.
+- Os botões admin ficam bloqueados quando a pessoa é pet, não tem data de nascimento ou não permite exibição da data.
+- A Home pode usar insights já gerados na área de curiosidades quando o usuário seleciona tópicos relacionados.
 
-### Status operacional
+### Logs seguros
 
-- Status atual: parcialmente implementado.
-- Não tratar como “não implementado”.
-- Não tratar como “concluído”.
-- Próxima etapa recomendada: corrigir a arquitetura para remover geração automática no perfil, criar/recuperar migration local de `person_generated_insights`, implementar geração/regeneração controlada por admin e executar QA final.
+- Geração e regeneração registram activity log.
+- Ações adicionadas:
+  - `person_insights.generated`
+  - `person_insights.regenerated`
+- Entity type usado:
+  - `person`
+- Metadata segura registrada:
+  - `tipos`
+  - `force`
+  - `source`
+- O log não deve salvar prompt completo, conteúdo gerado, telefone, endereço, e-mail, URL completa, base64, token, secret, chave OpenAI ou service role.
+
+### Secrets envolvidos
+
+A Edge Function depende de secrets/configurações server-side:
+
+```txt
+OPENAI_API_KEY
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+```
+
+Esses valores não devem aparecer no frontend, nos logs públicos, em commits ou em documentação com valores reais.
+
+### QA aprovado nesta rodada
+
+- Admin consegue gerar conteúdos ausentes por ação explícita.
+- Admin consegue regenerar conteúdos por ação explícita.
+- Registros são persistidos em `public.person_generated_insights`.
+- Logs são registrados em `activity_logs` com metadata segura.
+- Usuário comum não vê botões de geração/regeneração.
+- Perfil com insights existentes apenas lê e exibe conteúdo.
+- Perfil sem insights não dispara geração automática.
+- Pessoa pet não permite geração.
+- Pessoa sem data de nascimento não permite geração.
+- Pessoa com data de nascimento privada não permite geração.
+- Falhas da geração são tratadas sem quebrar o perfil.
+- `npm run build` passou.
+- `git diff --check` passou.
+- `supabase migration list` foi validado após repair.
+
+### Limitações e evoluções futuras
+
+- Ajustes editoriais finos dos prompts da Edge Function podem ser feitos futuramente.
+- `birth_date_events` e `historical_context` permanecem como possíveis tipos futuros, não implementados.
+- Pode ser avaliada futura revisão de RLS/policies caso a visibilidade dos insights precise ficar mais restrita por vínculo familiar ou privacidade avançada.
+- Pode ser criada documentação específica da frente se a área crescer.
 
 ---
+
 ## Linha do tempo do usuário
 
 ### Tópico 7.3
@@ -381,100 +403,6 @@
 - Não há exportação PDF da timeline.
 - Não há integração com IA na timeline.
 - Pode ser avaliada consolidação visual futura entre `PersonTimeline` e `PersonEventsList`.
-
----
-
-## Favoritos
-
-### Tópicos 7.8 e 7.9
-
-- A base de schema para favoritos persistidos foi implementada e aplicada no Supabase remoto.
-- A frente ainda não está concluída como funcionalidade de produto, porque faltam service, componente reutilizável, refatoração da página e integração visual no perfil.
-- O modelo legado/local de favoritos continua existindo temporariamente em `userEngagementService.ts` para compatibilidade.
-- Novos favoritos devem usar `public.user_favorites` com `entity_type`, `entity_id`, `label`, `description`, `href` e `metadata`.
-- As colunas legadas `tipo_conteudo`, `conteudo_id` e `titulo` permanecem na tabela para transição, mas `tipo_conteudo` e `conteudo_id` deixaram de ser obrigatórias.
-- Não deve haver uso de `localStorage` no novo fluxo persistido.
-- Não deve haver `DEFAULT_USER_ID = 'demo-user'` no novo service.
-
-### Schema consolidado
-
-- Tabela principal:
-  - `public.user_favorites`
-- Migrations relacionadas:
-  - `20260518120000_create_user_favorites.sql`
-  - `20260518141305_relax_legacy_user_favorites_columns.sql`
-- Colunas novas consolidadas:
-  - `id`
-  - `user_id`
-  - `entity_type`
-  - `entity_id`
-  - `label`
-  - `description`
-  - `href`
-  - `metadata`
-  - `created_at`
-- Colunas legadas mantidas temporariamente:
-  - `tipo_conteudo`
-  - `conteudo_id`
-  - `titulo`
-
-### RLS e policies
-
-- RLS está ativo em `public.user_favorites`.
-- Policies esperadas:
-  - `users can read own favorites` — SELECT;
-  - `users can insert own favorites` — INSERT;
-  - `users can update own favorites` — UPDATE;
-  - `users can delete own favorites` — DELETE.
-- Todas as operações devem respeitar `auth.uid() = user_id`.
-- Usuário autenticado só pode ler, inserir, atualizar ou remover seus próprios favoritos.
-- Não usar service role no frontend.
-
-### Índices e unicidade
-
-- Índices novos esperados:
-  - `idx_user_favorites_entity`;
-  - `idx_user_favorites_user_id_created_at_desc`;
-  - `user_favorites_user_entity_unique`.
-- A unicidade nova é por:
-  - `user_id`;
-  - `entity_type`;
-  - `entity_id`.
-- O índice/constraint legado por `tipo_conteudo` e `conteudo_id` foi removido ou neutralizado pela migration de relaxamento.
-
-### Tipos TypeScript
-
-- `src/app/types/index.ts` passou a incluir tipos novos para favoritos persistidos, como:
-  - `FavoriteEntityType`;
-  - `UserFavorite`;
-  - `CreateUserFavoritePayload`.
-- Tipos legados como `TipoConteudoFavorito` e `FavoritoUsuario` continuam existindo para compatibilidade até a refatoração final.
-
-### Próxima etapa de implementação
-
-- Criar service persistido:
-  - `src/app/services/favoritesService.ts`
-- Criar botão reutilizável:
-  - `src/app/components/favorites/FavoriteButton.tsx`
-- Refatorar página existente:
-  - `src/app/pages/MeusFavoritos.tsx`
-- Integrar botão inicial no perfil:
-  - `src/app/pages/PersonProfile.tsx`
-- Atualizar `userEngagementService.ts` apenas com comentário de legado para favoritos locais.
-
-### Regras para a próxima etapa
-
-- Não criar nova migration para service/UI.
-- Não rodar `supabase db push` na etapa de service/UI.
-- O novo service deve usar `supabase.auth.getUser()` para obter o usuário atual.
-- O novo service deve inserir apenas as colunas novas.
-- Metadata não deve conter telefone, endereço, e-mail, URL completa privada, base64, token ou secrets.
-- A página `/meus-favoritos` deve deixar de depender de `listarFavoritos`/`removerFavorito` do fluxo local legado.
-
-### Status operacional
-
-- Status atual: schema e tipos implementados; camada de aplicação pendente.
-- Próxima etapa recomendada: implementar service, componente, página refatorada, integração no perfil e QA manual.
 
 ---
 
@@ -664,6 +592,7 @@
   - eventos pessoais adicionados/editados/removidos;
   - confirmação de primeiro acesso;
   - solicitações de vínculo;
+  - geração/regeneração admin de insights de nascimento;
   - notificações, quando aplicável.
 - Logs agora funcionam com RLS sem depender de `.select().single()` após insert.
 - Usuário comum consegue registrar logs das próprias ações.
@@ -1069,14 +998,6 @@
 - A tela nova não deve depender da Edge Function legada.
 - Nenhuma correção automática deve ser executada nessa primeira versão.
 
-### Astrologia e insights de nascimento
-
-- O perfil da pessoa não deve chamar geração de IA automaticamente ao carregar.
-- Usuário comum não deve conseguir disparar geração ou regeneração de insights.
-- O frontend não deve expor `OPENAI_API_KEY`, service role ou qualquer secret.
-- Ausência de insight persistido deve aparecer como estado vazio/informativo, não como erro bloqueante.
-- Regeneração de conteúdo deve depender de ação explícita de admin.
-
 ### Notificações
 
 - A página `/notificacoes` não deve quebrar quando não houver notificações.
@@ -1148,8 +1069,6 @@
 - Confirmar recebimento real de e-mail no admin QA após configurar secrets reais do Resend.
 - Executar QA manual completo de notificações com usuário comum.
 - Validar limpeza de notificações reais criadas em testes QA.
-- Validar 7.2 com usuário comum: perfil deve apenas ler/exibir insights existentes e não deve disparar geração automática de IA.
-- Validar 7.2 com admin: geração/regeneração deve ser explícita, controlada e sem expor secrets no frontend.
 
 ### Notificações
 
@@ -1230,22 +1149,16 @@
 - Avaliar exportação PDF de eventos/timeline.
 - Avaliar edição manual de eventos da timeline.
 - Avaliar consolidação visual futura entre `PersonTimeline` e `PersonEventsList`.
-- Criar ou recuperar migration local idempotente para `public.person_generated_insights`, alinhada ao schema remoto já existente.
-- Remover geração automática de insights em `PersonDataView.tsx`.
-- Implementar geração/regeneração de insights apenas por ação explícita de admin.
-- Registrar logs seguros para geração/regeneração de insights, sem prompt completo, telefone, e-mail, URL completa, tokens ou secrets.
-- Implementar a camada de aplicação de favoritos persistidos: `favoritesService.ts`, `FavoriteButton.tsx`, refatoração de `/meus-favoritos` e integração inicial no perfil.
-- Avaliar remoção futura das colunas legadas de `public.user_favorites` após QA e migração definitiva do fluxo local.
 
 ### Ainda não implementado nesta etapa
 
-- Tópico 7.2 — Astrologia e acontecimentos do nascimento parcialmente implementado; falta migration local rastreável, remoção da geração automática no perfil, controle admin de geração/regeneração e QA final.
+- Tópico 7.2 — Astrologia e acontecimentos do nascimento concluído no escopo funcional desta rodada; evoluções editoriais/privacidade avançada ficam para backlog futuro.
 - Tópico 7.4 — Entrar em contato por WhatsApp concluído no escopo visual/frontend; log opcional e privacidade forte em banco/API permanecem como evoluções futuras.
 - Tópico 7.5 — Grau de parentesco/vínculo.
 - Tópico 7.6 — Selecionar área para PDF/impressão implementado e refinado no QA 7.6C para a viewport visível; árvore completa fica para evolução futura.
 - Tópico 7.7 — Legendas visuais da árvore.
-- Tópico 7.8 — Favoritos em todo o site com schema/tipos implementados; falta camada de aplicação e integrações visuais.
-- Tópico 7.9 — Página de favoritos com schema/tipos implementados; falta refatorar `/meus-favoritos` para Supabase.
+- Tópico 7.8 — Favoritos em todo o site.
+- Tópico 7.9 — Página de favoritos.
 - Tópico 7.10 — Responsividade/mobile.
 
 ## Referência com o plano 7.x
@@ -1255,12 +1168,12 @@ Esta seção relaciona o guia de implementações com os tópicos do plano de pr
 | Tópico | Status no guia de implementações | Onde aparece neste guia |
 |---|---|---|
 | 7.1 Notificações | Parcialmente implementado / consolidado para QA final | Seção "Notificações" |
-| 7.2 Astrologia e acontecimentos do nascimento | Parcialmente implementado; schema remoto, service, Edge Function e UI existem; faltam migration local, correção da geração automática, controle admin e QA | Seção "Astrologia e acontecimentos do nascimento" |
+| 7.2 Astrologia e acontecimentos do nascimento | Concluído no escopo funcional: schema/migration, service, Edge Function, exibição, controle admin, logs seguros e QA aprovado | Seção "Astrologia e acontecimentos do nascimento" |
 | 7.3 Linha do tempo do usuário | Implementado funcionalmente; evoluções futuras em backlog | Seção "Linha do tempo do usuário" |
 | 7.4 WhatsApp | Concluído no escopo visual/frontend; privacidade forte em banco/API e log opcional ficam como futuras evoluções | Seção "WhatsApp no perfil" |
 | 7.5 Grau de parentesco/vínculo | Funcionalmente consolidado após QA | Seção "Grau de parentesco/vínculo" |
 | 7.6 PDF/impressão por área | Implementado e refinado no QA 7.6C para viewport visível; árvore completa permanece futura | Seção "Exportação de área visível da árvore" |
 | 7.7 Legendas visuais da árvore | Não implementado | Ainda não há seção de implementação |
-| 7.8 Favoritos em todo o site | Schema e tipos implementados; service, botão reutilizável e integrações visuais pendentes | Seção "Favoritos" |
-| 7.9 Página de favoritos | Schema e tipos implementados; refatoração de `/meus-favoritos` para Supabase pendente | Seção "Favoritos" |
+| 7.8 Favoritos em todo o site | Não implementado nesta rodada | Ver eventuais bases de favoritos, se documentadas |
+| 7.9 Página de favoritos | Não implementado nesta rodada | Ver eventuais bases de favoritos, se documentadas |
 | 7.10 Responsividade/mobile | Não implementado nesta rodada | Ainda não há seção de implementação |
