@@ -57,6 +57,17 @@ export type TipoConteudoFavorito =
   | 'pagina'
   | 'historia';
 
+export type FavoriteEntityType =
+  | 'person'
+  | 'historical_file'
+  | 'relationship'
+  | 'forum_topic'
+  | 'family_event'
+  | 'person_event'
+  | 'page'
+  | 'timeline_item'
+  | 'story';
+
 export type TipoCanalNotificacao = 'interna' | 'email' | 'push' | 'whatsapp';
 
 export type NotificationTargetChannel = TipoCanalNotificacao;
@@ -303,6 +314,36 @@ export interface EventoFamiliar {
   created_by?: string;
 }
 
+export interface UserFavorite {
+  id: string;
+  user_id: string;
+  entity_type: FavoriteEntityType;
+  entity_id: string;
+  label: string;
+  description?: string | null;
+  href?: string | null;
+  metadata: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CreateUserFavoritePayload {
+  entity_type: FavoriteEntityType;
+  entity_id: string;
+  label: string;
+  description?: string | null;
+  href?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface FavoriteFilters {
+  entity_type?: FavoriteEntityType | FavoriteEntityType[];
+  entity_id?: string;
+  search?: string;
+  limit?: number;
+}
+
+// Legado: mantido temporariamente para compatibilidade com chamadas antigas.
 export interface FavoritoUsuario {
   id: string;
   user_id: string;
