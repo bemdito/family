@@ -31,6 +31,12 @@ import {
   substituirPessoaSocialProfiles,
 } from '../../services/pessoaSocialProfilesService';
 import {
+  gerarInsightsPessoa,
+  getInsightByType,
+  obterInsightsGeradosPessoa,
+  PersonGeneratedInsight,
+} from '../../services/personInsightsService';
+import {
   TipoEntidade,
   ArquivoHistorico,
   Pessoa,
@@ -80,6 +86,16 @@ interface RelacionamentoPendente {
   tipo: TipoRelacionamento;
   subtipo: SubtipoRelacionamento;
   marriageDetails?: MarriageDetailsForm;
+}
+
+function getGeneratedInsightStatusLabel(insight?: PersonGeneratedInsight) {
+  if (!insight) return 'Ausente';
+
+  if (insight.status === 'completed') return 'Gerado';
+  if (insight.status === 'pending') return 'Pendente';
+  if (insight.status === 'error') return 'Erro';
+
+  return insight.status;
 }
 
 function createEmptyAdminPessoaFormData() {
@@ -199,6 +215,10 @@ export function AdminPessoaForm() {
   const [subtipoRelSelecionado, setSubtipoRelSelecionado] = useState<SubtipoRelacionamento>('sangue');
   const [pendingMarriageDetails, setPendingMarriageDetails] = useState<MarriageDetailsForm>(() => createEmptyMarriageDetails());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [generatedInsights, setGeneratedInsights] = useState<PersonGeneratedInsight[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsActionLoading, setInsightsActionLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
   const draftKey = useMemo(() => getAdminPessoaDraftKey(isEdit, id), [id, isEdit]);
   const hasInitializedDraftRef = useRef(false);
   const hasUserEditedRef = useRef(false);
@@ -313,6 +333,45 @@ export function AdminPessoaForm() {
       mounted = false;
     };
   }, [draftKey, isEdit, id]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadInsightsForCurrentPerson() {
+      if (!isEdit || !id) {
+        setGeneratedInsights([]);
+        setInsightsError(null);
+        setInsightsLoading(false);
+        return;
+      }
+
+      try {
+        setInsightsLoading(true);
+        setInsightsError(null);
+
+        const insights = await obterInsightsGeradosPessoa(id);
+
+        if (mounted) {
+          setGeneratedInsights(insights);
+        }
+      } catch (error) {
+        if (mounted) {
+          const message = error instanceof Error ? error.message : 'Erro ao carregar insights gerados.';
+          setInsightsError(message);
+        }
+      } finally {
+        if (mounted) {
+          setInsightsLoading(false);
+        }
+      }
+    }
+
+    loadInsightsForCurrentPerson();
+
+    return () => {
+      mounted = false;
+    };
+  }, [id, isEdit]);
 
   const loadTodasPessoas = async () => {
     try {
@@ -538,6 +597,27 @@ export function AdminPessoaForm() {
     handleChange('telefone', formatted);
   };
 
+  const handleGenerateInsights = async (force = false) => {
+    if (!id) return;
+
+    try {
+      setInsightsActionLoading(true);
+      setInsightsError(null);
+
+      await gerarInsightsPessoa(id, force);
+      const refreshedInsights = await obterInsightsGeradosPessoa(id);
+      setGeneratedInsights(refreshedInsights);
+
+      toast.success(force ? 'Conteúdos regenerados com sucesso.' : 'Conteúdos gerados com sucesso.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao gerar insights.';
+      setInsightsError(message);
+      toast.error(message);
+    } finally {
+      setInsightsActionLoading(false);
+    }
+  };
+
   const handleCloseRelacionamentoDialog = () => {
     setShowAddRelDialog(false);
     setSearchTerm('');
@@ -626,6 +706,19 @@ export function AdminPessoaForm() {
     (r) => r.tipo !== 'pai' && r.tipo !== 'mae'
   );
 
+  const astrologyInsight = getInsightByType(generatedInsights, 'astrology');
+  const historicalEventsInsight = getInsightByType(generatedInsights, 'historical_events');
+  const hasAstrologyInsight = Boolean(astrologyInsight);
+  const hasHistoricalEventsInsight = Boolean(historicalEventsInsight);
+  const hasAllGeneratedInsights = hasAstrologyInsight && hasHistoricalEventsInsight;
+  const canManageGeneratedInsights = Boolean(
+    isEdit &&
+    id &&
+    formData.data_nascimento.trim() &&
+    formData.humano_ou_pet !== 'Pet' &&
+    formData.permitir_exibir_data_nascimento !== false
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm sticky top-0 z-10">
@@ -671,6 +764,76 @@ export function AdminPessoaForm() {
             isFalecido={isFalecido}
             onChange={(field, value) => handleChange(field, value)}
           />
+
+          {isEdit && id && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Astrologia e acontecimentos do nascimento</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Gere ou regenere conteúdos persistidos para exibição no perfil. Esta ação usa a Edge Function
+                  `generate-person-insights` e deve ser executada apenas quando necessário.
+                </p>
+
+                {insightsLoading && (
+                  <p className="text-sm text-gray-500">Carregando insights gerados...</p>
+                )}
+
+                {insightsError && (
+                  <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    {insightsError}
+                  </p>
+                )}
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Astrologia</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900">
+                      {getGeneratedInsightStatusLabel(astrologyInsight)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                      Acontecimentos históricos
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900">
+                      {getGeneratedInsightStatusLabel(historicalEventsInsight)}
+                    </p>
+                  </div>
+                </div>
+
+                {!canManageGeneratedInsights && (
+                  <p className="text-sm text-gray-500">
+                    Disponível apenas para pessoas humanas com data de nascimento exibível.
+                  </p>
+                )}
+
+                {canManageGeneratedInsights && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleGenerateInsights(false)}
+                      disabled={insightsActionLoading || hasAllGeneratedInsights}
+                    >
+                      {insightsActionLoading ? 'Processando...' : 'Gerar conteúdos ausentes'}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleGenerateInsights(true)}
+                      disabled={insightsActionLoading}
+                    >
+                      {insightsActionLoading ? 'Processando...' : 'Regenerar conteúdos'}
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <PersonBioFields
             value={formData}
