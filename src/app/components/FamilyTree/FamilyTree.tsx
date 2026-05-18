@@ -24,10 +24,15 @@ import {
 import { filterGraphToPersonalScope } from './layouts/filterPersonalTreeScope';
 import { genealogyColumnsLayout } from './layouts/genealogyColumnsLayout';
 import type { TreeViewMode } from './ViewModeToggle';
+import { TreeAreaSelectionOverlay } from './TreeAreaSelectionOverlay';
 import {
-  injectExportSafeCss,
-  sanitizeUnsupportedExportColors,
-} from './utils/exportColorSanitizer';
+  buildTreeExportFilename,
+  captureElementToCanvas,
+  downloadCanvasAsPng,
+  exportCanvasAsPdf,
+  openTreePrintWindow,
+  printCanvas,
+} from './utils/treeExport';
 import {
   DEFAULT_EDGE_FILTERS,
   DEFAULT_DIRECT_RELATIVE_FILTERS,
@@ -65,6 +70,7 @@ export interface FamilyTreeActions {
   print: () => Promise<void>;
   savePdf: () => Promise<void>;
   saveImage: () => Promise<void>;
+  startAreaSelection: () => void;
 }
 
 const edgeTypes: EdgeTypes = {
@@ -253,137 +259,42 @@ async function captureVisibleTree(container: HTMLDivElement | null) {
     throw new Error('Área da árvore não encontrada para exportação.');
   }
 
-  // Loaded on demand because print/PDF export needs a bitmap of the current ReactFlow viewport.
-  const { default: html2canvas } = await import('html2canvas');
-  document.documentElement.classList.add('is-exporting-family-tree');
-
-  try {
-    return await html2canvas(element, {
-      backgroundColor: '#ffffff',
-      scale: Math.min(2, window.devicePixelRatio || 1),
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      ignoreElements: (node) => {
-        const elementNode = node as HTMLElement;
-        return Boolean(
-          elementNode.classList?.contains('react-flow__controls') ||
-          elementNode.classList?.contains('react-flow__minimap')
-        );
-      },
-      onclone: (clonedDocument) => {
-        clonedDocument.documentElement.classList.add('is-exporting-family-tree');
-        injectExportSafeCss(clonedDocument);
-        const clonedRoot =
-          clonedDocument.querySelector('[data-export-root="family-tree"]') ||
-          clonedDocument.querySelector('.react-flow') ||
-          clonedDocument.body;
-        sanitizeUnsupportedExportColors(clonedDocument.body);
-        sanitizeUnsupportedExportColors(clonedRoot as HTMLElement);
-      },
-    });
-  } finally {
-    document.documentElement.classList.remove('is-exporting-family-tree');
-  }
+  return captureElementToCanvas(element);
 }
 
 async function printVisibleTree(container: HTMLDivElement | null) {
-  const printWindow = window.open('', '_blank');
-
-  if (!printWindow) {
-    throw new Error('O navegador bloqueou a janela de impressão.');
-  }
-
-  printWindow.document.write(`<!doctype html>
-<html>
-  <head>
-    <title>Preparando impressão</title>
-    <style>
-      html, body { margin: 0; min-height: 100%; background: #f8fafc; color: #0f172a; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-      body { display: flex; align-items: center; justify-content: center; }
-      p { margin: 0; font-size: 14px; }
-    </style>
-  </head>
-  <body>
-    <p>Preparando impressão da árvore...</p>
-  </body>
-</html>`);
-  printWindow.document.close();
+  const printWindow = openTreePrintWindow();
 
   try {
     const canvas = await captureVisibleTree(container);
-    const imageUrl = canvas.toDataURL('image/png');
-
-    if (printWindow.closed) {
-      throw new Error('A janela de impressão foi fechada antes da conclusão.');
+    printCanvas(canvas, 'Imprimir árvore', printWindow);
+  } catch (error) {
+    if (!printWindow.closed) {
+      printWindow.close();
     }
 
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html>
-<html>
-  <head>
-    <title>Imprimir árvore</title>
-    <style>
-      html, body { margin: 0; min-height: 100%; background: #f8fafc; }
-      body { display: flex; align-items: center; justify-content: center; }
-      img { width: 100vw; height: 100vh; object-fit: contain; display: block; }
-      @page { margin: 0; }
-      @media print {
-        html, body { width: 100%; height: 100%; }
-        img { width: 100%; height: 100%; }
-      }
-    </style>
-  </head>
-  <body>
-    <img src="${imageUrl}" alt="Área visível da árvore genealógica" />
-    <script>
-      const image = document.querySelector('img');
-      const printTree = () => {
-        window.focus();
-        window.print();
-      };
-      if (image.complete) {
-        setTimeout(printTree, 50);
-      } else {
-        image.addEventListener('load', () => setTimeout(printTree, 50), { once: true });
-      }
-    </script>
-  </body>
-</html>`);
-    printWindow.document.close();
-  } catch (error) {
-    printWindow.close();
     throw error;
   }
 }
 
 async function saveVisibleTreePdf(container: HTMLDivElement | null) {
   const canvas = await captureVisibleTree(container);
-  const imageUrl = canvas.toDataURL('image/png');
-  // Loaded on demand so normal tree navigation does not pay the PDF generation cost.
-  const { jsPDF } = await import('jspdf');
-  const orientation = canvas.width >= canvas.height ? 'landscape' : 'portrait';
-  const pdf = new jsPDF({
-    orientation,
-    unit: 'px',
-    format: [canvas.width, canvas.height],
-    compress: true,
-  });
-
-  pdf.addImage(imageUrl, 'PNG', 0, 0, canvas.width, canvas.height);
-  pdf.save('minha-arvore.pdf');
+  await exportCanvasAsPdf(
+    canvas,
+    buildTreeExportFilename('minha-arvore', 'pdf'),
+    'Árvore genealógica'
+  );
 }
 
 async function saveVisibleTreeImage(container: HTMLDivElement | null, viewMode: TreeViewMode) {
   const canvas = await captureVisibleTree(container);
-  const imageUrl = canvas.toDataURL('image/png');
-  const link = document.createElement('a');
-
-  link.href = imageUrl;
-  link.download = viewMode === 'minha-arvore' ? 'minha-arvore.png' : 'arvore-genealogica.png';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  downloadCanvasAsPng(
+    canvas,
+    buildTreeExportFilename(
+      viewMode === 'minha-arvore' ? 'minha-arvore' : 'arvore-genealogica',
+      'png'
+    )
+  );
 }
 
 function usesGenealogyLayout(viewMode: TreeViewMode) {
@@ -415,6 +326,7 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
   const [directFamilyFitZoom, setDirectFamilyFitZoom] = useState<number | null>(null);
   const [directFamilyCurrentZoom, setDirectFamilyCurrentZoom] = useState<number | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [isAreaSelectionOpen, setIsAreaSelectionOpen] = useState(false);
   const { NODE_WIDTH, NODE_HEIGHT } = TREE_CONSTANTS;
   const directFamilyFallbackMinZoom = isMobile ? DIRECT_FAMILY_MOBILE_FALLBACK_MIN_ZOOM : DIRECT_FAMILY_FALLBACK_MIN_ZOOM;
   const directFamilyMinZoom = directFamilyFitZoom
@@ -761,13 +673,27 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
     }
   }, [viewMode]);
 
+  const handleStartAreaSelection = useCallback(() => {
+    if (!getExportableFlowElement(containerRef.current)) {
+      toast.error('Área da árvore não encontrada para seleção.');
+      return;
+    }
+
+    setIsAreaSelectionOpen(true);
+  }, []);
+
+  const handleCloseAreaSelection = useCallback(() => {
+    setIsAreaSelectionOpen(false);
+  }, []);
+
   useImperativeHandle(ref, () => ({
     zoomIn: handleZoomIn,
     zoomOut: handleZoomOut,
     print: handlePrint,
     savePdf: handleSavePdf,
     saveImage: handleSaveImage,
-  }), [handleZoomIn, handleZoomOut, handlePrint, handleSavePdf, handleSaveImage]);
+    startAreaSelection: handleStartAreaSelection,
+  }), [handleZoomIn, handleZoomOut, handlePrint, handleSavePdf, handleSaveImage, handleStartAreaSelection]);
 
   return (
     <div
@@ -817,10 +743,10 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
-        panOnDrag={activeCanPan}
-        panOnScroll={activeCanPan}
-        zoomOnScroll
-        zoomOnPinch
+        panOnDrag={!isAreaSelectionOpen && activeCanPan}
+        panOnScroll={!isAreaSelectionOpen && activeCanPan}
+        zoomOnScroll={!isAreaSelectionOpen}
+        zoomOnPinch={!isAreaSelectionOpen}
         translateExtent={directFamilyTranslateExtent}
         preventScrolling
         defaultViewport={{
@@ -830,6 +756,20 @@ export const FamilyTree = React.forwardRef<FamilyTreeActions, FamilyTreeProps>(f
         }}
         proOptions={{ hideAttribution: true }}
       />
+      {isAreaSelectionOpen && (
+        <TreeAreaSelectionOverlay
+          getTargetElement={() => getExportableFlowElement(containerRef.current)}
+          filenameLabel={
+            viewMode === 'minha-arvore'
+              ? 'minha-arvore'
+              : viewMode === 'genealogia'
+                ? 'genealogia'
+                : 'visao-completa'
+          }
+          title="Área selecionada da árvore"
+          onClose={handleCloseAreaSelection}
+        />
+      )}
     </div>
   );
 });

@@ -1421,11 +1421,23 @@ Grau: bisavô
 
 ### Status
 
-Não implementado.
+7.6A diagnóstico concluído. 7.6B implementado em primeira versão para seleção da viewport visível.
 
 ### Objetivo
 
 Implementar funcionalidade para selecionar área que o usuário deseja salvar como PDF ou imprimir.
+
+### Implementado em 7.6B
+
+- Botão **Selecionar área** no painel **Informações da árvore**.
+- Overlay de seleção retangular sobre a viewport visível da `.react-flow`.
+- Cancelamento por botão **Cancelar** e tecla `Esc`.
+- Exportação da área selecionada como PNG.
+- Exportação da área selecionada como PDF com orientação automática.
+- Impressão apenas da área selecionada.
+- Feedback de carregamento e erro no overlay.
+- Captura limitada à área visível atual da árvore; não exporta árvore completa.
+- Sem migration, sem alteração de schema Supabase e sem Storage.
 
 ### Pontos a verificar
 
@@ -1443,21 +1455,20 @@ Implementar funcionalidade para selecionar área que o usuário deseja salvar co
 
 ```txt
 src/app/components/FamilyTree/FamilyTree.tsx
+src/app/components/FamilyTree/TreeAreaSelectionOverlay.tsx
+src/app/components/FamilyTree/utils/treeExport.ts
 src/app/pages/Home.tsx
-src/app/services
-src/app/utils
 ```
 
-### Sugestões
+### Pendências recomendadas para 7.6C
 
-- Criar modo “Selecionar área”.
-- Permitir arrastar retângulo sobre a árvore.
-- Exportar apenas área selecionada.
-- Oferecer opções:
-  - PNG;
-  - PDF;
-  - impressão.
-- Atenção a performance em árvores grandes.
+- QA visual nas três visões da árvore.
+- Testes em diferentes combinações de zoom e pan.
+- Testes em mobile/tablet.
+- Testes com árvores grandes.
+- Testes com imagens externas e URLs sem CORS.
+- Avaliar limites de dimensão/área e eventual redução automática de escala.
+- Avaliar exportação da árvore completa futuramente.
 
 ---
 

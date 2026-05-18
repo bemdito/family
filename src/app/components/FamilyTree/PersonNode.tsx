@@ -274,7 +274,10 @@ export const PersonNode = React.memo(({ data }: NodeProps<PersonNodeData>) => {
 
   const renderMenu = () => (
     menuOpen && (
-      <div className="absolute right-2 top-2 z-50 min-w-[170px] rounded-lg border border-gray-200 bg-white p-1 shadow-xl">
+      <div
+        data-tree-node-menu="true"
+        className="absolute right-2 top-2 z-50 min-w-[170px] rounded-lg border border-gray-200 bg-white p-1 shadow-xl"
+      >
         <ActionButton
           label="Visualizar"
           Icon={Eye}

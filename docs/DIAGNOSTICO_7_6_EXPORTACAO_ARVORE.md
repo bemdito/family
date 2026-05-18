@@ -348,6 +348,6 @@ Risco de imagens externas:
 
 ## Conclusao
 
-7.6A e apenas diagnostico; 7.6B ainda nao foi implementado.
+7.6A foi concluido como diagnostico. A implementacao 7.6B foi concluida em primeira versao com selecao da viewport visivel da `.react-flow`, recorte do canvas selecionado e exportacao PNG/PDF/impressao.
 
-A funcionalidade futura deve partir do codigo parcial ja existente de exportacao da viewport atual, mas nao deve assumir que ele resolve a frente 7.6 completa. A prioridade tecnica de 7.6B deve ser separar utilitario de exportacao, criar overlay de selecao, capturar a `.react-flow` visivel e recortar o canvas com coordenadas relativas ao export surface antes de gerar PNG, PDF ou impressao.
+A funcionalidade implementada permanece limitada ao que esta visivel na viewport atual da arvore. Exportacao da arvore completa, QA mobile/tablet, validacao ampla com zoom/pan, arvores grandes e imagens externas ficam como evolucoes futuras da 7.6C.

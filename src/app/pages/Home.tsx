@@ -114,6 +114,7 @@ import {
   Sparkles,
   MessageCircle,
   UserSearch,
+  Scan,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -772,6 +773,7 @@ export function Home() {
 
       {activeSidebarPanel === 'info' && (
         <SidebarInfoPanel
+          onSelectArea={() => familyTreeRef.current?.startAreaSelection()}
           onSavePdf={() => familyTreeRef.current?.savePdf()}
           onSaveImage={() => familyTreeRef.current?.saveImage()}
           onPrint={() => familyTreeRef.current?.print()}
@@ -2030,11 +2032,13 @@ function SidebarPanelTabs({
 }
 
 function SidebarInfoPanel({
+  onSelectArea,
   onSavePdf,
   onSaveImage,
   onPrint,
   onWhatsApp,
 }: {
+  onSelectArea: () => void;
   onSavePdf: () => void;
   onSaveImage: () => void;
   onPrint: () => void;
@@ -2050,6 +2054,7 @@ function SidebarInfoPanel({
       </div>
 
       <div className="space-y-2">
+        <SidebarActionButton icon={Scan} label="Selecionar área" onClick={onSelectArea} />
         <SidebarActionButton icon={FileDown} label="Salvar como PDF" onClick={onSavePdf} />
         <SidebarActionButton icon={ImageDown} label="Salvar como Imagem" onClick={onSaveImage} />
         <SidebarActionButton icon={Printer} label="Imprimir" onClick={onPrint} />
